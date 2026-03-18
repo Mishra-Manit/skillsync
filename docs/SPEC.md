@@ -433,134 +433,177 @@ v0 success metric: a team lead can go from `bunx skillsync create` to a teammate
 
 ## Implementation Plan
 
-### Phase 1 — Project Scaffold
-
-Get a working CLI binary with no real logic yet. Goal: `bunx skillsync --help` works end-to-end.
-
-- [ ] Initialize package (`package.json`, `tsconfig.json`, `.gitignore`)
-- [ ] Install all v0 dependencies (`@crustjs/core`, `@crustjs/prompts`, `@crustjs/style`, `@crustjs/store`, `@crustjs/validate`, `simple-git`, `gray-matter`)
-- [ ] Set up TypeScript build (`outDir: dist/`, `strict: true`)
-- [ ] Create `src/index.ts` with `@crustjs/core` — register `create`, `join`, `sync`, `status`, `import` as stub subcommands
-- [ ] Wire `detectGh()` as the very first call in each command handler stub — verify it exits with a styled error when `gh` is absent or unauthenticated
-- [ ] Add `bin` field to `package.json`, verify `bun dist/index.js --help` prints the command list
-- [ ] Add `bun run build`, `bun run dev`, `bun run typecheck` scripts
+> **Ordering rationale:** Each phase ends with something you can run and manually verify. Library code is built only as far as the next command needs it — no speculative work. `join` is built before `create` because it has far fewer dependencies (no GitHub API, no discovery), lets you validate the entire store → symlink → config pipeline against a manually-created test repo, and gives you confidence in the foundation before tackling the most complex command.
 
 ---
 
-### Phase 2 — Core Library Layer
+### Phase 1 — Scaffold
 
-Build all the shared logic in `src/lib/` before wiring up any commands. Each module is independently testable.
+**Goal:** `bun dist/index.js --help` prints all five subcommands. Nothing else works yet.
+
+- [ ] Initialize `package.json` (`name: skillsync`, `type: module`), `tsconfig.json` (`strict: true`, `outDir: dist/`), `.gitignore`
+- [ ] Install all v0 dependencies: `@crustjs/core`, `@crustjs/prompts`, `@crustjs/style`, `@crustjs/store`, `@crustjs/validate`, `simple-git`, `gray-matter`
+- [ ] Add `bun run build`, `bun run dev` (watch), `bun run typecheck`, `bun run lint` scripts
+- [ ] Create `src/index.ts` — register `create`, `join`, `sync`, `status`, `import` as stub handlers that just print `"not implemented"` via `@crustjs/style`
+- [ ] Add `bin.skillsync` field to `package.json` pointing to `dist/index.js`
+
+**Smoke test:** `bun run build && bun dist/index.js --help` lists all five commands. `bun run typecheck` passes with zero errors.
+
+---
+
+### Phase 2 — Universal Foundations: `config.ts` + `detectGh()`
+
+**Goal:** Every command can read/write local config and will exit cleanly if `gh` is missing. These two modules underpin everything else — build them once, never revisit.
 
 **`src/lib/config.ts`**
-- [ ] Define `Config` type and `@crustjs/store` schema for `~/.skillsync/config.json`
-- [ ] `readConfig()` — load config via store, return typed object or `null` if not found
-- [ ] `writeConfig(config)` — write config via store, create `~/.skillsync/` directory if needed
+- [ ] Define `Config` type: `{ repo: string, team: string, username: string, linkedAt: string }`
+- [ ] Define `@crustjs/store` schema and initialize the store at `~/.skillsync/`
+- [ ] `readConfig()` — return typed `Config` or `null` if the store file does not exist
+- [ ] `writeConfig(config: Config)` — atomic write via store; creates `~/.skillsync/` if needed
 
-**`src/lib/github.ts`**
-- [ ] `detectGh()` — first run `gh --version` to confirm `gh` is in PATH (exit code 0), then run `gh auth status` to confirm authentication; return `{ username: string }` on success; on any failure print a styled error with install/login instructions and exit with code 1. This is the single canonical pre-flight gate used by every command.
-- [ ] `createRepo(name, org?)` — run `gh repo create` with `--private --clone` flags
-- [ ] `inviteCollaborator(repo, emailOrUsername)` — run `gh api` to add collaborator, handle org vs personal repo difference
+**`src/lib/github.ts`** (pre-flight only — GitHub API calls come in Phase 6)
+- [ ] `detectGh()` — run `gh --version` (confirms in PATH), then `gh auth status` (confirms login); parse authenticated username from output; return `{ username: string }` on success; on any failure print a styled two-line error (what went wrong + how to fix it) and `process.exit(1)`
+
+- [ ] Drop `detectGh()` as the first call into every command stub from Phase 1
+
+**Smoke test:** With `gh` logged out, running `bun dist/index.js join foo/bar` prints a styled error and exits 1. Logged back in, it prints `"not implemented"`.
+
+---
+
+### Phase 3 — `skillsync join` (first fully working command)
+
+**Goal:** A teammate can point `join` at any real GitHub repo and get symlinks wired up in `~/.claude/skills/`. Create a throwaway test repo manually on GitHub to drive this.
+
+**`src/lib/git.ts`** (clone only — push/pull/commit come in Phase 4)
+- [ ] `cloneRepo(repoSlug, destPath)` — shells out to `gh repo clone <slug> <destPath>`; returns a `SimpleGit` instance bound to `destPath`
+
+**`src/lib/placer.ts`** (full module — needed by `join`, `import`, and `status`)
+- [ ] `isOwnedSymlink(targetPath)` — returns `true` if path is a symlink pointing into `~/.skillsync/store/`
+- [ ] `linkSkill(storePath, targetPath)` — create symlink from `targetPath` → `storePath`; if a real directory already occupies `targetPath`, move it to `~/.claude/skills/.backup/<name>` and notify user before linking
+- [ ] `unlinkSkill(targetPath)` — remove symlink only if `isOwnedSymlink()` is true; never removes real directories
+- [ ] `listLinked()` — scan all known target directories, return every path where `isOwnedSymlink()` is true
+
+**`src/commands/join.ts`**
+- [ ] Call `detectGh()` — always first
+- [ ] Accept `<owner/repo>` as required argument; validate format with `@crustjs/validate`
+- [ ] Call `cloneRepo()` into `~/.skillsync/store/`; show a spinner while cloning
+- [ ] Read and validate `skillsync.json` from the cloned repo with `@crustjs/validate`
+- [ ] Call `writeConfig()` with repo slug, team name, and username
+- [ ] Enumerate `store/skills/` and `store/agents/`; call `linkSkill()` for each
+- [ ] Print per-item result (`linked` / `backed up`) and a final summary
+
+**Smoke test:** `bun dist/index.js join <your-test-repo>` clones the repo, creates symlinks in `~/.claude/skills/`, writes `~/.skillsync/config.json`. Verify symlinks with `ls -la ~/.claude/skills/`.
+
+---
+
+### Phase 4 — `skillsync sync`
+
+**Goal:** After editing a skill file in the store, `sync` commits and pushes it. Validates the git round-trip.
+
+**`src/lib/git.ts`** (complete the module)
+- [ ] `commitAll(repoPath, message)` — stage all changes (`git add -A`) and commit with the provided message
+- [ ] `pullRebase(repoPath)` — `git pull --rebase origin main`; on conflict throw a typed `SyncConflictError` with the conflicting file path
+- [ ] `push(repoPath)` — push to `origin main`
+- [ ] `sync(repoPath, username, changedSkillName?)` — orchestrate: `commitAll` (if dirty) → `pullRebase` → `push`; format commit message as `[skillsync] @<username> updated <skill-name>`
+
+**`src/commands/sync.ts`**
+- [ ] Call `detectGh()` — always first
+- [ ] `readConfig()` — exit with styled error if `null` (not initialized; suggest running `join` or `create`)
+- [ ] Call `git.sync()` with config values; show a spinner during network ops
+- [ ] On `SyncConflictError`: print the conflicting file path in red, tell user to open it, resolve the conflict markers, and re-run `sync`
+- [ ] On success: print what was pushed and what was pulled (compare HEAD before/after)
+
+**Smoke test:** Edit a skill file in `~/.skillsync/store/skills/`, run `sync`, verify the commit appears on GitHub. Then pull in a change from GitHub and run `sync` again to verify the pull direction.
+
+---
+
+### Phase 5 — `skillsync status`
+
+**Goal:** A quick read-only health check. All dependencies already exist — this phase should take under an hour.
+
+**`src/commands/status.ts`**
+- [ ] `readConfig()` — if `null`, print a "not initialized" state with suggested next step and exit cleanly (not an error)
+- [ ] Display: team name, repo URL, authenticated GitHub user, and last sync timestamp (store as ISO string in config on every successful `sync`)
+- [ ] Call `listLinked()` — display linked skills and agents in two groups with counts
+- [ ] If store directory is missing or empty, warn that the repo may need to be re-cloned
+
+**Smoke test:** Run `status` after a successful `join` + `sync`. All fields populate. Delete `~/.skillsync/config.json` and re-run — gets the "not initialized" message.
+
+---
+
+### Phase 6 — `skillsync create`
+
+**Goal:** The team lead's full onboarding flow. This is the most complex command. Build it last among the commands so all git, placer, and config primitives are already proven.
+
+**`src/lib/github.ts`** (complete the module)
+- [ ] `createRepo(name, org?)` — `gh repo create <org/name> --private --clone` (personal if `org` is blank); returns the cloned local path
+- [ ] `inviteCollaborator(repoSlug, emailOrUsername)` — `gh api /repos/<slug>/collaborators/<user> -X PUT`; handle org repos (support email) vs personal repos (username only); return `'invited' | 'already-member' | 'error'` — never throw, let the caller handle per-invitee results
 
 **`src/lib/discovery.ts`**
-- [ ] `discoverLocalSkills()` — scan `~/.claude/skills/`, `~/.claude/agents/`, `~/.codex/skills/`, `~/.cursor/skills/`
-- [ ] For each directory found, parse `SKILL.md` frontmatter with `gray-matter` to extract `name` and `description`
-- [ ] Deduplicate by name (Claude's copy wins)
-- [ ] Return `DiscoveredSkill[]` with `{ name, description, sourcePath, type: 'skill' | 'agent' }`
+- [ ] `discoverLocalSkills()` — scan `~/.claude/skills/` and `~/.claude/agents/` (v0 only; codex/cursor in v1)
+- [ ] For each subdirectory, attempt to parse `SKILL.md` frontmatter with `gray-matter`; skip silently if missing
+- [ ] Deduplicate by `name` frontmatter field (first found wins)
+- [ ] Return `DiscoveredSkill[]`: `{ name, description, sourcePath, type: 'skill' | 'agent' }`
 
-**`src/lib/placer.ts`**
-- [ ] `linkSkill(storePath, targetPath)` — create symlink; if a real directory already exists at target, back it up to `.backup/` and notify
-- [ ] `unlinkSkill(targetPath)` — remove only symlinks managed by skillsync, never real directories
-- [ ] `listLinked()` — return all symlinks currently managed by skillsync
-- [ ] `isOwnedSymlink(path)` — check if a path is a symlink pointing into `~/.skillsync/store/`
+**`src/commands/create.ts`**
+- [ ] Call `detectGh()` — always first
+- [ ] Prompt: team name — validate non-empty and URL-safe (`/^[a-z0-9-]+$/`) with `@crustjs/validate`
+- [ ] Prompt: GitHub org — optional; blank defaults to authenticated personal account
+- [ ] Show spinner: call `createRepo(name, org)` — repo is created and cloned into `~/.skillsync/store/`
+- [ ] Seed the repo: create `skills/` and `agents/` directories; write `skillsync.json` (from the schema); write a starter `skills/example/SKILL.md`; write `README.md` containing the `join` command
+- [ ] Prompt: invite teammates — comma-separated input; for each trimmed value call `inviteCollaborator()`, print per-invitee result
+- [ ] Call `discoverLocalSkills()` — if non-empty results, show multiselect (nothing checked by default); copy selected items into `store/skills/` or `store/agents/`
+- [ ] `commitAll` + `push` everything
+- [ ] Call `writeConfig()` with repo slug and team name
+- [ ] Print the `join` command in a highlighted box
 
-**`src/lib/git.ts`**
-- [ ] `cloneRepo(repoSlug, destPath)` — `gh repo clone` or `git clone`, return `SimpleGit` instance
-- [ ] `commitAll(repoPath, message)` — stage all changes and commit
-- [ ] `pullRebase(repoPath)` — `git pull --rebase`, throw with clear error on conflict (v0: no auto-merge)
-- [ ] `push(repoPath)` — push to origin main
-- [ ] `sync(repoPath, username, changedSkillName?)` — full cycle: commit → pull → push
-
----
-
-### Phase 3 — `skillsync create`
-
-The team lead's onboarding flow. Implement in `src/commands/create.ts`.
-
-- [ ] Call `detectGh()` — this is always the first statement; exit with styled error if gh is absent or unauthenticated
-- [ ] Prompt: team name (validate non-empty, URL-safe)
-- [ ] Prompt: GitHub org (optional, blank = personal account)
-- [ ] Call `createRepo(name, org)` — create private GitHub repo and clone it locally to `~/.skillsync/store/`
-- [ ] Seed the cloned repo: create `skills/`, `agents/` directories, write a starter `SKILL.md` example, write `skillsync.json`, write `README.md` with the join command
-- [ ] Prompt: invite teammates (comma-separated input, split and trim)
-- [ ] For each invitee, call `inviteCollaborator()` — report success or failure per invitee, don't abort on one failure
-- [ ] Call `discoverLocalSkills()` — if results found, show multiselect with all unchecked by default
-- [ ] Copy selected skills into `~/.skillsync/store/skills/` or `~/.skillsync/store/agents/`
-- [ ] Commit everything and push
-- [ ] Write `~/.skillsync/config.json` with repo slug and team name
-- [ ] Print the join command in a highlighted box
+**Smoke test:** Run `create` end-to-end. Verify the private repo exists on GitHub, invites were sent, selected skills appear in the repo, and the printed `join` command works from a second machine/account.
 
 ---
 
-### Phase 4 — `skillsync join`
+### Phase 7 — `skillsync import`
 
-The teammate's onboarding flow. Implement in `src/commands/join.ts`.
+**Goal:** Let any team member add a skill to the shared repo after initial setup. Short phase — all dependencies are already built.
 
-- [ ] Call `detectGh()` — first statement; exit with styled error if gh is absent or unauthenticated
-- [ ] Accept `<owner/repo>` as a required argument
-- [ ] Clone repo to `~/.skillsync/store/` using `cloneRepo()`
-- [ ] Read `skillsync.json` from the cloned repo to get target preferences
-- [ ] Write `~/.skillsync/config.json` locally
-- [ ] Enumerate all skills in `store/skills/` and agents in `store/agents/`
-- [ ] For each, call `linkSkill()` — report `linked` or `backed up` per item
-- [ ] Print summary of what was linked and where to find backups
+**`src/commands/import.ts`**
+- [ ] Call `detectGh()` — always first
+- [ ] Accept `<path>` as required argument; validate it is an existing directory containing a `SKILL.md`
+- [ ] Parse `SKILL.md` frontmatter with `gray-matter` to determine `name` and `type` (`skill` | `agent`)
+- [ ] `readConfig()` — exit with styled error if `null`
+- [ ] Copy the directory into `~/.skillsync/store/skills/<name>/` or `store/agents/<name>/` (fail if name already exists in store — don't silently overwrite)
+- [ ] Call `linkSkill()` to wire the new entry locally
+- [ ] `commitAll` + `push` with message `[skillsync] @<username> added <name>`
+- [ ] Print confirmation: skill name, where it lives in the store, symlink target
 
----
-
-### Phase 5 — `skillsync sync`, `status`, `import`
-
-Finish the remaining v0 commands.
-
-**`sync`** (`src/commands/sync.ts`)
-- [ ] Read config — exit with helpful error if not initialized
-- [ ] Run `git.sync()` — commit local changes (if any), pull, push
-- [ ] Report what changed (skills updated locally, skills pushed)
-- [ ] On conflict: print the conflicting file path, tell user to resolve manually and re-run
-
-**`status`** (`src/commands/status.ts`)
-- [ ] Read config — show "not initialized" state if missing
-- [ ] Show team name, repo, last sync time (read from `~/.skillsync/last-sync` timestamp file)
-- [ ] Call `listLinked()` — display all linked skills and agents grouped by type
-
-**`import`** (`src/commands/import.ts`)
-- [ ] Accept `<path>` as a required argument
-- [ ] Validate path is a directory containing a `SKILL.md`
-- [ ] Read config — exit if not initialized
-- [ ] Copy the skill directory into the store (`skills/` or `agents/` based on frontmatter `type` field)
-- [ ] Commit and push
-- [ ] Call `linkSkill()` to update the local symlink
+**Smoke test:** Create a local skill directory with a `SKILL.md`, run `import <path>`, verify it appears in the store, is symlinked into `~/.claude/skills/`, and the commit is visible on GitHub.
 
 ---
 
-### Phase 6 — Polish and Distribution
+### Phase 8 — Polish and Distribution
 
-Make it ready for real users.
+**Goal:** Zero rough edges. Ready for a real team to use.
 
-- [ ] Error messages: every thrown error should produce a styled error output via `@crustjs/style` with a clear next step, never a raw stack trace
-- [ ] Audit every command: confirm `detectGh()` is the first call in each handler and that no command can proceed past it without a valid authenticated `gh` session
-- [ ] Add `--version` flag (pull from `package.json`)
-- [ ] Write `README.md` with install instructions, quick start, and command reference
-- [ ] Publish to npm (`npm publish --access public`)
-- [ ] Verify `bunx skillsync --help` works from a clean machine with Bun installed
+- [ ] Global error boundary in `src/index.ts` — catch any unhandled rejection, print a styled error with the message and a `--debug` hint, exit 1; never show a raw stack trace in normal mode
+- [ ] Add `--debug` flag to `src/index.ts` — when set, print full stack traces and raw command output
+- [ ] Audit every command: `detectGh()` is the first call, every early-exit uses a styled message, no `console.log` anywhere
+- [ ] Write `~/.skillsync/last-sync` ISO timestamp on every successful `sync` (read in `status`)
+- [ ] Add `--version` flag — read from `package.json` at build time
+- [ ] Write project `README.md` — install instructions, 60-second quick-start, full command reference
+- [ ] Run `bun run typecheck` and `bun run lint` to zero errors/warnings
+- [ ] Publish to npm: `npm publish --access public`
+- [ ] Verify `bunx skillsync --help` works from a clean machine with only Bun installed
+
+**Smoke test (end-to-end):** On a clean machine, run the full lead → teammate flow: `bunx skillsync create` → accept invite on GitHub → `bunx skillsync join` on a second account → edit a skill → `bunx skillsync sync` → verify the other account sees the update after their own `sync`. Total time should be under 60 seconds of active work.
 
 ---
 
-### Phase 7 — v1: Daemon + Auto-sync
+### Phase 9 — v1: Daemon + Auto-sync
 
-After v0 ships and is being used by at least one team.
+After v0 is being actively used by at least one real team.
 
-- [ ] Implement `src/lib/watcher.ts` with chokidar — watch `~/.skillsync/store/` for changes, debounce 2 seconds
-- [ ] Add poll loop (60s interval) for remote changes
-- [ ] Implement `src/commands/daemon.ts` — `start` (detach process, write PID file), `stop` (kill by PID), `status` (check PID alive)
-- [ ] Implement frontmatter-aware merge in `src/lib/merger.ts` using `gray-matter` + `diff-match-patch`
-- [ ] Replace v0 conflict bail-out in `git.ts` with the merger
-- [ ] Add multi-target placement to `placer.ts` (codex, cursor directories)
+- [ ] `src/lib/watcher.ts` — watch `~/.skillsync/store/` with chokidar; debounce 2 seconds before triggering sync
+- [ ] Add a 60-second remote poll loop alongside the file watcher
+- [ ] `src/commands/daemon.ts` — `start` (detach with `Bun.spawn`, write PID to `~/.skillsync/daemon.pid`), `stop` (read PID, `kill`), `status` (check PID is alive)
+- [ ] `src/lib/merger.ts` — frontmatter-aware three-way merge using `gray-matter` + `diff-match-patch`; merge body independently of frontmatter
+- [ ] Replace the v0 `SyncConflictError` bail-out in `git.ts` with the merger; only fail loudly if the merger itself cannot resolve
+- [ ] Extend `placer.ts` for multi-target placement: `~/.codex/skills/` and `~/.cursor/skills/` driven by `targets` in `skillsync.json`
