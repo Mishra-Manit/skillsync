@@ -168,6 +168,47 @@ $ bunx skillsync join personal/my-skills
 
 ---
 
+### `skillsync delete [name]`
+
+Used by any teammate to remove linked team skills/agents from their local tool directories.
+
+Important behavior:
+- This is a **local uninstall** command. It does **not** delete files from the team GitHub repo.
+- It only removes symlinks owned by skillsync (targets under `~/.skillsync/store/`).
+- If a non-symlink file/directory exists at the target path, it is never deleted.
+
+**Selection behavior:**
+- `skillsync delete <name>` → deletes one item by exact name
+- `skillsync delete` (no name) → opens a multiselect of linked skills/agents (none selected by default)
+- `--repo <owner/repo>` → only show/delete items linked from that repo
+- `--type skill|agent` → filter selection list
+- `--all` → remove all linked items in scope (still requires confirmation)
+
+**Backup restore behavior:**
+- If `~/.claude/skills/.backup/<name>/` or `~/.claude/agents/.backup/<name>.md` exists, prompt whether to restore it after unlinking
+- If declined, backup remains untouched
+
+```
+$ skillsync delete code-review --repo acme/acme-skills
+
+  Removing 1 linked item from acme/acme-skills...
+  ✓ unlinked code-review
+  Restored previous local backup: ~/.claude/skills/code-review
+
+$ skillsync delete --repo acme/acme-skills
+
+  Which linked items should be removed?
+  > [ ] code-review (skill)
+    [x] deploy-prod (skill)
+    [x] planner.md (agent)
+
+  Remove 2 items from local Claude directories? (y/N)
+  ✓ unlinked deploy-prod
+  ✓ unlinked planner.md
+```
+
+---
+
 ### `skillsync sync`
 
 One-shot manual sync. Commits any local edits to team skills, pulls remote changes, and resolves conflicts.
@@ -426,6 +467,7 @@ skillsync/
     commands/
       create.ts      # create team repo, invite, import
       join.ts        # clone, link, handle conflicts
+      delete.ts      # remove linked local skills/agents safely
       sync.ts        # one-shot manual sync
       daemon.ts      # start/stop/status background watcher
       status.ts      # show current state
@@ -480,6 +522,7 @@ skillsync/
 |-----------------|--------|
 | `create` | Included — repo creation, invites, import flow |
 | `join` | Included — clone, symlink, conflict backup |
+| `delete` | Included — local unlink and optional backup restore |
 | `sync` | Included — manual one-shot |
 | `status` | Included — current state display |
 | `import` | Included — add a skill post-setup |
@@ -533,15 +576,15 @@ Current success metric: a team lead can go from `bunx skillsync create` to a tea
 
 ### Phase 1 — Scaffold
 
-**Goal:** `bun dist/index.js --help` prints all six subcommands. Nothing else works yet.
+**Goal:** `bun dist/index.js --help` prints all seven subcommands. Nothing else works yet.
 
 - [ ] Initialize `package.json` (`name: skillsync`, `type: module`), `tsconfig.json` (`strict: true`, `outDir: dist/`), `.gitignore`
 - [ ] Install core dependencies: `@crustjs/core`, `@crustjs/prompts`, `@crustjs/style`, `@crustjs/store`, `@crustjs/validate`, `simple-git`, `gray-matter`
 - [ ] Add `bun run build`, `bun run dev` (watch), `bun run typecheck`, `bun run lint` scripts
-- [ ] Create `src/index.ts` — register `create`, `join`, `sync`, `status`, `import`, `check-git` as stub handlers that just print `"not implemented"` via `@crustjs/style`
+- [ ] Create `src/index.ts` — register `create`, `join`, `delete`, `sync`, `status`, `import`, `check-git` as stub handlers that just print `"not implemented"` via `@crustjs/style`
 - [ ] Add `bin.skillsync` field to `package.json` pointing to `dist/index.js`
 
-**Smoke test:** `bun run build && bun dist/index.js --help` lists all six commands. `bun run typecheck` passes with zero errors.
+**Smoke test:** `bun run build && bun dist/index.js --help` lists all seven commands. `bun run typecheck` passes with zero errors.
 
 ---
 
@@ -594,6 +637,33 @@ Current success metric: a team lead can go from `bunx skillsync create` to a tea
 - [ ] Print per-item result (`linked` / `backed up` / `skipped — name collision`) and a final summary
 
 **Smoke test:** `bun dist/index.js join <your-test-repo>` clones the repo to `~/.skillsync/store/<owner>/<repo>/`, creates symlinks in `~/.claude/skills/`, and adds one entry to `config.repos` in `~/.skillsync/config.json`. Run `join` a second time with a different test repo — both entries appear side-by-side in config and all symlinks coexist without collision. Verify with `ls -la ~/.claude/skills/`.
+
+---
+
+### Phase 3.5 — `skillsync delete` (safe local uninstall)
+
+**Goal:** A teammate can remove any linked skill/agent from local tool directories without risking accidental data loss or deleting shared team repo content.
+
+**`src/lib/placer.ts`** (extend existing module)
+- [ ] `listLinkedDetailed()` — return linked items with `{ name, type, targetPath, resolvedStorePath }` so commands can filter by repo slug and type
+- [ ] `restoreBackup(targetPath)` — if a matching `.backup/` entry exists, move it back into place; return `restored | missing`
+- [ ] Keep unlink safety invariant: only unlink paths where `isOwnedSymlink()` is true
+
+**`src/commands/delete.ts`**
+- [ ] Call `detectGh()` — always first
+- [ ] `readConfig()` — exit with a styled error if no repos are joined
+- [ ] Support `delete [name]` plus flags: `--repo <owner/repo>`, `--type skill|agent`, `--all`
+- [ ] Resolve repo scope with existing config helpers (`resolveRepo` when needed); with multiple repos and no `--repo`, allow all repos in scope
+- [ ] Build candidate list from `listLinkedDetailed()`; filter by `name`/`repo`/`type`; if no matches, print a styled "nothing to delete" message and exit 0
+- [ ] If `name` is omitted and `--all` is not set, show a multiselect prompt (nothing selected by default)
+- [ ] Show a confirmation prompt with exact count + names before deleting
+- [ ] For each selected item: `unlinkSkill(targetPath)`; if backup exists, prompt to restore (default: no) and call `restoreBackup()` when accepted
+- [ ] Print per-item result (`unlinked` / `restored backup` / `skipped`) and a final summary
+
+**`src/index.ts`**
+- [ ] Register `delete` command in the CLI command tree and help output
+
+**Smoke test:** Join two repos with at least 3 linked items total, run `skillsync delete --repo acme/acme-skills` and remove one skill + one agent, verify only owned symlinks are removed and `~/.skillsync/store/...` content remains unchanged. Re-run with `skillsync delete code-review` and verify exact-name deletion. Verify backup restore flow by deleting an item that has `.backup/` data and confirming restore.
 
 ---
 
