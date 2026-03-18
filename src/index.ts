@@ -7,6 +7,8 @@ import { runSync } from './commands/sync'
 import { runStatus } from './commands/status'
 import { runImport } from './commands/import'
 import { runCheckGit } from './commands/check-git'
+import { runDelete } from './commands/delete'
+import { runLeave } from './commands/leave'
 
 const cli = new Crust('skillsync')
   .meta({ description: 'Share and sync Claude Code agents and skills with your team' })
@@ -35,6 +37,23 @@ const cli = new Crust('skillsync')
   )
   .command('check-git', (cmd) =>
     cmd.meta({ description: 'Check gh CLI version and authentication status' }).run(runCheckGit)
+  )
+  .command('delete', (cmd) =>
+    cmd
+      .meta({ description: 'Remove linked skills or agents from local tool directories' })
+      .args([{ name: 'name', type: 'string' }] as const)
+      .flags({
+        repo: { type: 'string', description: 'Limit to a specific joined repo' },
+        all: { type: 'boolean', default: false, description: 'Skip multiselect, remove all matching items' },
+      })
+      .run((ctx) => runDelete(ctx.args.name, ctx.flags))
+  )
+
+  .command('leave', (cmd) =>
+    cmd
+      .meta({ description: 'Leave a joined team repo and remove all its linked items' })
+      .args([{ name: 'repo', type: 'string' }] as const)
+      .run((ctx) => runLeave(ctx.args.repo))
   )
 
 await cli.execute()

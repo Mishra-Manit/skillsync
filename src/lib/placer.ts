@@ -2,6 +2,13 @@ import { lstat, readlink, symlink, mkdir, rename, unlink, readdir } from 'fs/pro
 import { homedir } from 'os'
 import { join, dirname, basename, isAbsolute } from 'path'
 
+export type LinkedItem = {
+  name: string
+  type: 'skill' | 'agent'
+  targetPath: string
+  resolvedStorePath: string
+}
+
 type LinkResult =
   | { type: 'linked' }
   | { type: 'backed-up'; backupPath: string }
@@ -79,4 +86,53 @@ export async function listLinked(): Promise<string[]> {
     }
   }
   return linked
+}
+
+async function scanDir(dir: string, type: 'skill' | 'agent'): Promise<LinkedItem[]> {
+  const items: LinkedItem[] = []
+  try {
+    const entries = await readdir(dir)
+    for (const entry of entries) {
+      const targetPath = join(dir, entry)
+      try {
+        const stat = await lstat(targetPath)
+        if (!stat.isSymbolicLink()) continue
+        const abs = resolveLink(await readlink(targetPath), targetPath)
+        if (!abs.startsWith(storeRoot)) continue
+        items.push({ name: entry, type, targetPath, resolvedStorePath: abs })
+      } catch {
+        // skip unreadable entries
+      }
+    }
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
+  }
+  return items
+}
+
+export async function listLinkedDetailed(): Promise<LinkedItem[]> {
+  const [skills, agents] = await Promise.all([
+    scanDir(join(homedir(), '.claude', 'skills'), 'skill'),
+    scanDir(join(homedir(), '.claude', 'agents'), 'agent'),
+  ])
+  return [...skills, ...agents]
+}
+
+export async function hasBackup(targetPath: string): Promise<boolean> {
+  try {
+    await lstat(join(dirname(targetPath), '.backup', basename(targetPath)))
+    return true
+  } catch {
+    return false
+  }
+}
+
+export async function restoreBackup(targetPath: string): Promise<'restored' | 'missing'> {
+  const backupPath = join(dirname(targetPath), '.backup', basename(targetPath))
+  try {
+    await rename(backupPath, targetPath)
+    return 'restored'
+  } catch {
+    return 'missing'
+  }
 }

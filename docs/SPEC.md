@@ -689,6 +689,30 @@ Current success metric: a team lead can go from `bunx skillsync create` to a tea
 
 ---
 
+### Phase 3.6 — `skillsync leave` (full repo teardown)
+
+**Goal:** A teammate can completely remove a joined repo from their machine in one command — all symlinks removed, store directory deleted, config entry cleared.
+
+**`src/lib/config.ts`** (already has `removeRepo` — no changes needed)
+
+**`src/commands/leave.ts`**
+- [ ] Call `detectGh()` — always first
+- [ ] `readConfig()` — exit with a styled error if no repos are joined
+- [ ] Accept `[repo]` as an optional argument (the `owner/repo` slug)
+- [ ] If omitted and one repo is joined, use it automatically; if multiple repos are joined and no arg is given, show a `select` prompt so the user picks one
+- [ ] Show a single confirmation: `Leave <repo>? This removes all linked skills/agents and deletes the local store.` (default: no)
+- [ ] Call `listLinkedDetailed()`, filter to the chosen repo, call `unlinkSkill()` on each
+- [ ] Delete the store directory with `rm -rf <storePath>`
+- [ ] Call `removeRepo(slug)` to clear the config entry
+- [ ] Print a short summary: items unlinked, store deleted, config updated
+
+**`src/index.ts`**
+- [ ] Register `leave` command
+
+**Smoke test:** Join a repo, verify symlinks exist, run `skillsync leave <repo>`, confirm that `~/.claude/skills/` and `~/.claude/agents/` no longer contain the repo's items, `~/.skillsync/store/<owner>/<repo>/` is gone, and the entry is absent from `config.json`. Run with no argument while two repos are joined — verify the select prompt appears.
+
+---
+
 ### Phase 5 — `skillsync status`
 
 **Goal:** A quick read-only health check. All dependencies already exist — this phase should take under an hour.
