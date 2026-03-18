@@ -4,6 +4,22 @@ export type GhAuth = {
   username: string
 }
 
+type GhAuthAccount = {
+  active?: boolean
+  login?: string
+}
+
+type GhAuthStatusJson = {
+  hosts?: Record<string, GhAuthAccount[]>
+}
+
+function pickActiveLogin(hosts: Record<string, GhAuthAccount[]>): string | null {
+  const accounts = Object.values(hosts).flat()
+  const active = accounts.find((account) => account.active)
+  const candidate = active ?? accounts[0]
+  return candidate?.login ?? null
+}
+
 export async function detectGh(): Promise<GhAuth> {
   // Check that gh is in PATH
   try {
@@ -18,20 +34,35 @@ export async function detectGh(): Promise<GhAuth> {
     process.exit(1)
   }
 
-  // Check that gh is authenticated
-  const authResult = Bun.spawnSync(['gh', 'auth', 'status'], {
+  const authJsonResult = Bun.spawnSync(['gh', 'auth', 'status', '--json', 'hosts'], {
     stdout: 'pipe',
     stderr: 'pipe',
   })
 
-  if (!authResult.success) {
+  // gh auth status --json exits 0 even when account has issues; non-zero is a fatal error.
+  if (!authJsonResult.success) {
     process.stderr.write(style.red('✗ gh CLI is installed but you are not logged in.\n'))
     process.stderr.write(style.dim('  Run `gh auth login` to authenticate, then retry.\n'))
     process.exit(1)
   }
 
-  // gh auth status writes to stderr
-  const output = authResult.stderr.toString() + authResult.stdout.toString()
+  const authJsonRaw = authJsonResult.stdout.toString().trim()
+  try {
+    const parsed = JSON.parse(authJsonRaw) as GhAuthStatusJson
+    const username = parsed.hosts ? pickActiveLogin(parsed.hosts) : null
+
+    if (username) {
+      return { username }
+    }
+  } catch {
+    // Fall through to text parsing fallback.
+  }
+
+  const authTextResult = Bun.spawnSync(['gh', 'auth', 'status'], {
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  const output = authTextResult.stderr.toString() + authTextResult.stdout.toString()
   const match = output.match(/Logged in to \S+ account (\S+)/)
 
   if (!match) {

@@ -73,7 +73,9 @@ export async function addRepo(entry: RepoConfig, username?: string): Promise<voi
 export async function removeRepo(slug: string): Promise<void> {
   const config = await readConfig()
   if (!config) return
-  const { [slug]: _removed, ...rest } = config.repos
+  const rest = Object.fromEntries(
+    Object.entries(config.repos).filter(([repo]) => repo !== slug)
+  )
   await writeConfig({ ...config, repos: rest })
 }
 
