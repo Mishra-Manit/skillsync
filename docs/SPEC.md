@@ -125,21 +125,24 @@ $ bunx skillsync create
 
 ### `skillsync join <owner/repo>`
 
-Used by **each teammate** after accepting the GitHub invite.
+Used by **each teammate** after accepting the GitHub invite. Can be run multiple times with different repos — each one is tracked independently.
 
 Flow:
-1. Clone the team repo to `~/.skillsync/store/`
-2. Read `skillsync.json` from the repo for target preferences
-3. For each skill/agent in the store, create a symlink in the appropriate local tool directories
-4. Handle conflicts: if the user already has a local skill with the same name, back it up to `~/.claude/skills/.backup/` before creating the symlink
-5. Report what was linked and what was backed up
+1. Validate `<owner/repo>` format with `@crustjs/validate`
+2. Check `config.repos` — if the slug already exists, ask the user if they want to re-clone (default: no); if they decline, exit cleanly
+3. Clone the team repo to `~/.skillsync/store/<owner>/<repo>/` (namespaced so multiple repos coexist without collision)
+4. Read and validate `skillsync.json` from the cloned repo
+5. Add an entry to `config.repos` keyed by repo slug — never overwrites unrelated existing repo entries
+6. For each skill/agent in the store, create a symlink in the appropriate local tool directories
+7. Handle conflicts: if the user already has a local skill with the same name, back it up to `~/.claude/skills/.backup/<name>/` before creating the symlink
+8. Report what was linked and what was backed up
 
 ```
 $ bunx skillsync join acme/acme-skills
 
   Joining acme-skills...
 
-  Cloned acme/acme-skills (3 skills, 1 agent)
+  Cloned acme/acme-skills → ~/.skillsync/store/acme/acme-skills/ (3 skills, 1 agent)
 
   Linking to Claude Code...
     code-review       linked
@@ -149,6 +152,18 @@ $ bunx skillsync join acme/acme-skills
 
   Done. Skills are active in Claude Code.
   Run `skillsync sync` to pull updates.
+
+$ bunx skillsync join personal/my-skills
+
+  Joining my-skills...
+
+  Cloned personal/my-skills → ~/.skillsync/store/personal/my-skills/ (2 skills, 0 agents)
+
+  Linking to Claude Code...
+    sql-guide         linked
+    refactor-helper   linked
+
+  Done. You now have 2 repos joined. Run `skillsync status` to see all.
 ```
 
 ---
@@ -157,14 +172,27 @@ $ bunx skillsync join acme/acme-skills
 
 One-shot manual sync. Commits any local edits to team skills, pulls remote changes, and resolves conflicts.
 
+**Multi-repo behavior:**
+- No flag → if one repo is joined, syncs it automatically; if multiple repos are joined, syncs **all** of them in sequence
+- `--repo <owner/repo>` → syncs only the specified repo; exits with a styled error if the slug is not in `config.repos`
+
 ```
 $ skillsync sync
 
-  Syncing acme-skills...
-
+  Syncing acme/acme-skills...
   Committed local changes to code-review
   Pulled 1 update (deploy-prod updated by @alice)
-  All up to date.
+  ✓ acme/acme-skills up to date
+
+  Syncing personal/my-skills...
+  Nothing to commit.
+  ✓ personal/my-skills up to date
+
+$ skillsync sync --repo acme/acme-skills
+
+  Syncing acme/acme-skills...
+  Committed local changes to code-review
+  ✓ acme/acme-skills up to date
 ```
 
 ---
@@ -184,35 +212,65 @@ Runs `skillsync sync` automatically in the background.
 
 ### `skillsync status`
 
-Shows current state: repo, linked skills, daemon, last sync.
+Shows current state for all joined repos: repo URLs, linked skills and agents per repo, and last sync timestamps. Read-only — never modifies anything.
 
 ```
 $ skillsync status
 
-  Team:      acme-skills
-  Repo:      github.com/acme/acme-skills
-  Daemon:    running (PID 48291)
-  Last sync: 4 minutes ago
+  GitHub user: @alice
+  2 repos joined:
 
-  3 skills linked to Claude Code:
-    code-review
-    deploy-prod
-    api-conventions
+  acme/acme-skills
+    Team:      acme-skills
+    Store:     ~/.skillsync/store/acme/acme-skills/
+    Last sync: 4 minutes ago
+    Skills (3): code-review, deploy-prod, api-conventions
+    Agents (1): planner
 
-  1 agent linked to Claude Code:
-    planner
+  personal/my-skills
+    Team:      my-skills
+    Store:     ~/.skillsync/store/personal/my-skills/
+    Last sync: never
+    Skills (2): sql-guide, refactor-helper
+    Agents (0): —
+
+$ skillsync status  # when no repos are joined
+
+  Not initialized. Run `skillsync join <owner/repo>` or `skillsync create` to get started.
 ```
 
 ---
 
 ### `skillsync import <path>`
 
-Adds a skill from the local machine into the shared team repo after initial setup.
+Adds a skill from the local machine into a shared team repo after initial setup.
+
+**Repo selection:**
+- No flag → if one repo is joined, uses it automatically; if multiple repos are joined, presents a `select` prompt
+- `--repo <owner/repo>` → targets the specified repo directly; exits with a styled error if the slug is not in `config.repos`
 
 ```
 $ skillsync import ~/.claude/skills/sql-migrations
 
+  # single repo joined — no prompt needed
   Copied sql-migrations into acme/acme-skills/skills/
+  Committed and pushed.
+  Symlink updated locally.
+
+$ skillsync import ~/.claude/skills/sql-migrations
+
+  # multiple repos joined — prompts for target
+  Which repo should this skill be added to?
+  > acme/acme-skills
+    personal/my-skills
+
+  Copied sql-migrations into acme/acme-skills/skills/
+  Committed and pushed.
+  Symlink updated locally.
+
+$ skillsync import ~/.claude/skills/sql-migrations --repo personal/my-skills
+
+  Copied sql-migrations into personal/my-skills/skills/
   Committed and pushed.
   Symlink updated locally.
 ```
@@ -240,28 +298,45 @@ Selected skills are copied (not moved) into the team repo. Originals stay untouc
 
 ## Placement Layer
 
-The store lives at `~/.skillsync/store/`. Skills are symlinked from there into tool directories:
+Each joined repo is cloned into a namespaced subdirectory of `~/.skillsync/store/`. Multiple team repos coexist without any path collision. Skills are symlinked from the relevant store subdirectory into tool directories:
 
 ```
 ~/.skillsync/store/
-  skills/
-    code-review/
-      SKILL.md
-    deploy-prod/
-      SKILL.md
-      scripts/
-        deploy.sh
-  agents/
-    planner.md
+  acme/
+    acme-skills/              ← clone of github.com/acme/acme-skills
+      skills/
+        code-review/
+          SKILL.md
+        deploy-prod/
+          SKILL.md
+          scripts/
+            deploy.sh
+      agents/
+        planner.md
+  personal/
+    my-skills/                ← clone of github.com/personal/my-skills
+      skills/
+        sql-guide/
+          SKILL.md
+        refactor-helper/
+          SKILL.md
+      agents/
 
 Symlinked to:
-~/.claude/skills/code-review   -> ~/.skillsync/store/skills/code-review
-~/.claude/agents/planner.md    -> ~/.skillsync/store/agents/planner.md
+~/.claude/skills/code-review      -> ~/.skillsync/store/acme/acme-skills/skills/code-review
+~/.claude/skills/deploy-prod      -> ~/.skillsync/store/acme/acme-skills/skills/deploy-prod
+~/.claude/agents/planner.md       -> ~/.skillsync/store/acme/acme-skills/agents/planner.md
+~/.claude/skills/sql-guide        -> ~/.skillsync/store/personal/my-skills/skills/sql-guide
+~/.claude/skills/refactor-helper  -> ~/.skillsync/store/personal/my-skills/skills/refactor-helper
 ```
+
+`placer.ts` determines symlink ownership by checking whether the resolved target path falls anywhere under `~/.skillsync/store/` — it does not need to know which specific repo a symlink belongs to in order to safely manage it.
 
 If the user has `codex` or `cursor` enabled in their config, those get symlinked too. The placer only manages its own symlinks — it will not clobber real directories.
 
 **Conflict on join**: if a real (non-symlink) directory exists at the target, it is backed up to `~/.claude/skills/.backup/<name>/` before the symlink is created. The user is notified.
+
+**Name collisions across repos**: if two joined repos both contain a skill named `code-review`, the second `join` will detect the collision (the target symlink already exists and is owned), warn the user, and skip that skill — it does not overwrite. The user must rename one of the skills manually to resolve this.
 
 On non-symlink-friendly platforms, falls back to copy mode (`--copy` flag or config setting).
 
@@ -456,10 +531,14 @@ v0 success metric: a team lead can go from `bunx skillsync create` to a teammate
 **Goal:** Every command can read/write local config and will exit cleanly if `gh` is missing. These two modules underpin everything else — build them once, never revisit.
 
 **`src/lib/config.ts`**
-- [ ] Define `Config` type: `{ repo: string, team: string, username: string, linkedAt: string }`
+- [ ] Define `RepoConfig` type: `{ repo: string, team: string, storePath: string, linkedAt: string, lastSync: string | null }` — one entry per joined repo; `storePath` is the absolute local clone path (e.g. `~/.skillsync/store/acme/acme-skills`)
+- [ ] Define `Config` type: `{ username: string, repos: Record<string, RepoConfig> }` — `repos` is keyed by repo slug `"owner/repo"`
 - [ ] Define `@crustjs/store` schema and initialize the store at `~/.skillsync/`
 - [ ] `readConfig()` — return typed `Config` or `null` if the store file does not exist
 - [ ] `writeConfig(config: Config)` — atomic write via store; creates `~/.skillsync/` if needed
+- [ ] `addRepo(entry: RepoConfig)` — read current config (or create a fresh empty one), merge the new entry into `config.repos` keyed by `entry.repo`, then call `writeConfig()`; never modifies any other existing repo entry
+- [ ] `removeRepo(slug: string)` — remove the entry at `config.repos[slug]` and call `writeConfig()`; no-op if the slug is not present
+- [ ] `resolveRepo(config: Config, flag?: string): RepoConfig` — shared helper used by `sync` and `import`: if `flag` is set, look up `config.repos[flag]` and error with a styled message if not found; if `config.repos` has exactly one entry, return it automatically; otherwise throw a `NeedsRepoSelectError` that the calling command catches to show a `select` prompt before retrying
 
 **`src/lib/github.ts`** (pre-flight only — GitHub API calls come in Phase 6)
 - [ ] `detectGh()` — run `gh --version` (confirms in PATH), then `gh auth status` (confirms login); parse authenticated username from output; return `{ username: string }` on success; on any failure print a styled two-line error (what went wrong + how to fix it) and `process.exit(1)`
@@ -486,13 +565,15 @@ v0 success metric: a team lead can go from `bunx skillsync create` to a teammate
 **`src/commands/join.ts`**
 - [ ] Call `detectGh()` — always first
 - [ ] Accept `<owner/repo>` as required argument; validate format with `@crustjs/validate`
-- [ ] Call `cloneRepo()` into `~/.skillsync/store/`; show a spinner while cloning
+- [ ] Compute the namespaced clone destination: `~/.skillsync/store/<owner>/<repo>/` — derived directly from the slug argument
+- [ ] Check `readConfig()` — if the slug already exists in `config.repos`, prompt the user whether to re-clone (default: no); if they decline, exit cleanly with a styled message
+- [ ] Call `cloneRepo()` into the computed destination; show a spinner while cloning
 - [ ] Read and validate `skillsync.json` from the cloned repo with `@crustjs/validate`
-- [ ] Call `writeConfig()` with repo slug, team name, and username
-- [ ] Enumerate `store/skills/` and `store/agents/`; call `linkSkill()` for each
-- [ ] Print per-item result (`linked` / `backed up`) and a final summary
+- [ ] Call `addRepo()` with a new `RepoConfig` entry — never overwrites entries for unrelated repos already in config
+- [ ] Enumerate `<storePath>/skills/` and `<storePath>/agents/`; for each entry call `linkSkill()` — if the target symlink already exists and `isOwnedSymlink()` returns true, skip it and warn the user (name collision with a skill from another joined repo)
+- [ ] Print per-item result (`linked` / `backed up` / `skipped — name collision`) and a final summary
 
-**Smoke test:** `bun dist/index.js join <your-test-repo>` clones the repo, creates symlinks in `~/.claude/skills/`, writes `~/.skillsync/config.json`. Verify symlinks with `ls -la ~/.claude/skills/`.
+**Smoke test:** `bun dist/index.js join <your-test-repo>` clones the repo to `~/.skillsync/store/<owner>/<repo>/`, creates symlinks in `~/.claude/skills/`, and adds one entry to `config.repos` in `~/.skillsync/config.json`. Run `join` a second time with a different test repo — both entries appear side-by-side in config and all symlinks coexist without collision. Verify with `ls -la ~/.claude/skills/`.
 
 ---
 
@@ -508,12 +589,13 @@ v0 success metric: a team lead can go from `bunx skillsync create` to a teammate
 
 **`src/commands/sync.ts`**
 - [ ] Call `detectGh()` — always first
-- [ ] `readConfig()` — exit with styled error if `null` (not initialized; suggest running `join` or `create`)
-- [ ] Call `git.sync()` with config values; show a spinner during network ops
-- [ ] On `SyncConflictError`: print the conflicting file path in red, tell user to open it, resolve the conflict markers, and re-run `sync`
-- [ ] On success: print what was pushed and what was pulled (compare HEAD before/after)
+- [ ] `readConfig()` — exit with styled error if `null` or `config.repos` is empty (suggest `join` or `create`)
+- [ ] Determine target repos: if `--repo <slug>` flag is provided, look it up in `config.repos` and exit with a styled error if not found; otherwise collect **all** entries in `config.repos` and sync them sequentially
+- [ ] For each target repo: show a labeled spinner (`Syncing <slug>...`), call `git.sync(repoConfig.storePath, username)`; on success update `repoConfig.lastSync` to the current ISO timestamp via `addRepo()`
+- [ ] On `SyncConflictError`: print the repo slug and conflicting file path in red, instruct the user to open the file, resolve the conflict markers, and re-run `sync`; when syncing all repos continue to the next one rather than aborting entirely
+- [ ] On success: print a per-repo summary of what was pushed and what was pulled (diff HEAD before/after for each)
 
-**Smoke test:** Edit a skill file in `~/.skillsync/store/skills/`, run `sync`, verify the commit appears on GitHub. Then pull in a change from GitHub and run `sync` again to verify the pull direction.
+**Smoke test:** Edit a skill file in `~/.skillsync/store/acme/acme-skills/skills/`, run `sync`, verify the commit appears on GitHub. Run `sync --repo acme/acme-skills` and verify only that repo is touched. With two repos joined, run `sync` with no flag and verify both repos are processed in sequence with individual result lines.
 
 ---
 
@@ -522,12 +604,13 @@ v0 success metric: a team lead can go from `bunx skillsync create` to a teammate
 **Goal:** A quick read-only health check. All dependencies already exist — this phase should take under an hour.
 
 **`src/commands/status.ts`**
-- [ ] `readConfig()` — if `null`, print a "not initialized" state with suggested next step and exit cleanly (not an error)
-- [ ] Display: team name, repo URL, authenticated GitHub user, and last sync timestamp (store as ISO string in config on every successful `sync`)
-- [ ] Call `listLinked()` — display linked skills and agents in two groups with counts
-- [ ] If store directory is missing or empty, warn that the repo may need to be re-cloned
+- [ ] `readConfig()` — if `null` or `config.repos` is empty, print a "not initialized" state with the suggested next step and exit cleanly (exit code 0, not an error)
+- [ ] Print the authenticated GitHub username at the top, then iterate over every entry in `config.repos` and render one block per repo
+- [ ] Per-repo block: team name, store path, last sync timestamp (from `repoConfig.lastSync`, display as relative time or "never"), and linked skill/agent counts
+- [ ] Call `listLinked()` — group results by which `storePath` prefix the symlink resolves to, so skills are shown under the correct repo block
+- [ ] If a repo's `storePath` directory is missing or empty, print an inline warning that the repo may need to be re-cloned (`skillsync join <slug>`)
 
-**Smoke test:** Run `status` after a successful `join` + `sync`. All fields populate. Delete `~/.skillsync/config.json` and re-run — gets the "not initialized" message.
+**Smoke test:** Run `status` after joining two repos and syncing only one. Both repo blocks appear; the unsynced one shows "Last sync: never". Delete `~/.skillsync/config.json` and re-run — gets the "not initialized" message.
 
 ---
 
@@ -549,15 +632,15 @@ v0 success metric: a team lead can go from `bunx skillsync create` to a teammate
 - [ ] Call `detectGh()` — always first
 - [ ] Prompt: team name — validate non-empty and URL-safe (`/^[a-z0-9-]+$/`) with `@crustjs/validate`
 - [ ] Prompt: GitHub org — optional; blank defaults to authenticated personal account
-- [ ] Show spinner: call `createRepo(name, org)` — repo is created and cloned into `~/.skillsync/store/`
+- [ ] Show spinner: call `createRepo(name, org)` — repo is created and cloned into `~/.skillsync/store/<org-or-username>/<name>/` (same namespaced layout used by `join`)
 - [ ] Seed the repo: create `skills/` and `agents/` directories; write `skillsync.json` (from the schema); write a starter `skills/example/SKILL.md`; write `README.md` containing the `join` command
 - [ ] Prompt: invite teammates — comma-separated input; for each trimmed value call `inviteCollaborator()`, print per-invitee result
 - [ ] Call `discoverLocalSkills()` — if non-empty results, show multiselect (nothing checked by default); copy selected items into `store/skills/` or `store/agents/`
 - [ ] `commitAll` + `push` everything
-- [ ] Call `writeConfig()` with repo slug and team name
+- [ ] Call `addRepo()` with a new `RepoConfig` entry (slug, team name, computed `storePath`, current ISO timestamp as `linkedAt`, `lastSync: null`)
 - [ ] Print the `join` command in a highlighted box
 
-**Smoke test:** Run `create` end-to-end. Verify the private repo exists on GitHub, invites were sent, selected skills appear in the repo, and the printed `join` command works from a second machine/account.
+**Smoke test:** Run `create` end-to-end. Verify the private repo is cloned into `~/.skillsync/store/<org-or-username>/<name>/`, the private repo exists on GitHub, invites were sent, selected skills appear in the repo, and the printed `join` command works from a second machine/account. If the user already has another repo joined, verify `status` shows both repos.
 
 ---
 
@@ -569,13 +652,14 @@ v0 success metric: a team lead can go from `bunx skillsync create` to a teammate
 - [ ] Call `detectGh()` — always first
 - [ ] Accept `<path>` as required argument; validate it is an existing directory containing a `SKILL.md`
 - [ ] Parse `SKILL.md` frontmatter with `gray-matter` to determine `name` and `type` (`skill` | `agent`)
-- [ ] `readConfig()` — exit with styled error if `null`
-- [ ] Copy the directory into `~/.skillsync/store/skills/<name>/` or `store/agents/<name>/` (fail if name already exists in store — don't silently overwrite)
+- [ ] `readConfig()` — exit with styled error if `null` or `config.repos` is empty (suggest `join` or `create`)
+- [ ] Resolve the target repo: call `resolveRepo(config, flags['--repo'])` — auto-selects if one repo is joined, shows a `select` prompt if multiple are joined, or uses the `--repo` flag value directly
+- [ ] Copy the directory into `<repoConfig.storePath>/skills/<name>/` or `<repoConfig.storePath>/agents/<name>/` (exit with a styled error if a directory with that name already exists in the target repo's store — never silently overwrite)
 - [ ] Call `linkSkill()` to wire the new entry locally
-- [ ] `commitAll` + `push` with message `[skillsync] @<username> added <name>`
+- [ ] `commitAll` + `push` on `repoConfig.storePath` with message `[skillsync] @<username> added <name>`
 - [ ] Print confirmation: skill name, where it lives in the store, symlink target
 
-**Smoke test:** Create a local skill directory with a `SKILL.md`, run `import <path>`, verify it appears in the store, is symlinked into `~/.claude/skills/`, and the commit is visible on GitHub.
+**Smoke test:** With two repos joined, run `import <path>` with no flag — the repo `select` prompt appears. Re-run with `import <path> --repo acme/acme-skills` — skips the prompt and goes directly to that repo. Verify the skill appears under the correct namespaced store path (e.g. `~/.skillsync/store/acme/acme-skills/skills/<name>/`), is symlinked into `~/.claude/skills/`, and the commit is visible on GitHub.
 
 ---
 
@@ -586,14 +670,20 @@ v0 success metric: a team lead can go from `bunx skillsync create` to a teammate
 - [ ] Global error boundary in `src/index.ts` — catch any unhandled rejection, print a styled error with the message and a `--debug` hint, exit 1; never show a raw stack trace in normal mode
 - [ ] Add `--debug` flag to `src/index.ts` — when set, print full stack traces and raw command output
 - [ ] Audit every command: `detectGh()` is the first call, every early-exit uses a styled message, no `console.log` anywhere
-- [ ] Write `~/.skillsync/last-sync` ISO timestamp on every successful `sync` (read in `status`)
+- [ ] Confirm that every successful `sync` updates `repoConfig.lastSync` in `config.repos` via `addRepo()` — no separate flat file needed; `status` reads it from there
 - [ ] Add `--version` flag — read from `package.json` at build time
 - [ ] Write project `README.md` — install instructions, 60-second quick-start, full command reference
 - [ ] Run `bun run typecheck` and `bun run lint` to zero errors/warnings
 - [ ] Publish to npm: `npm publish --access public`
 - [ ] Verify `bunx skillsync --help` works from a clean machine with only Bun installed
 
-**Smoke test (end-to-end):** On a clean machine, run the full lead → teammate flow: `bunx skillsync create` → accept invite on GitHub → `bunx skillsync join` on a second account → edit a skill → `bunx skillsync sync` → verify the other account sees the update after their own `sync`. Total time should be under 60 seconds of active work.
+**Smoke test (end-to-end):** On a clean machine, run the full multi-repo lead → teammate flow:
+1. `bunx skillsync create` — creates `acme/acme-skills`, cloned into `~/.skillsync/store/acme/acme-skills/`
+2. `bunx skillsync join personal/my-skills` on the same machine — both repos now appear in `config.repos`; `bunx skillsync status` shows two repo blocks
+3. Accept invite on GitHub; run `bunx skillsync join acme/acme-skills` on a second account — skills from both repos land in `~/.claude/skills/` via separate symlink trees
+4. Edit a skill file under `~/.skillsync/store/acme/acme-skills/skills/`; run `bunx skillsync sync` — both repos are processed; only the modified one produces a commit
+5. Run `bunx skillsync sync --repo personal/my-skills` — only that repo is touched; `acme/acme-skills` lastSync timestamp is unchanged
+6. Verify the second account sees the update after their own `sync`. Total time should be under 60 seconds of active work.
 
 ---
 

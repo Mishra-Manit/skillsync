@@ -49,9 +49,9 @@ Rules:
 
 **gh CLI detection**: `github.ts` shells out to `gh auth status` to detect if the user is authenticated. If `gh` is unavailable or unauthenticated, fall back to plain `git` and tell the user to push manually.
 
-**Store location**: `~/.skillsync/store/` is the canonical local copy. Tool directories (`~/.claude/skills/`, etc.) contain symlinks pointing into the store.
+**Store location**: each joined repo is cloned into `~/.skillsync/store/<owner>/<repo>/` — one namespaced subdirectory per team repo. Tool directories (`~/.claude/skills/`, etc.) contain symlinks pointing into the relevant store subdirectory. This means a user can be joined to multiple team repos simultaneously without any path collision.
 
-**Config format**: local machine state lives at `~/.skillsync/config.json` (managed by `@crustjs/store`). The team repo's `skillsync.json` is committed to git and read as plain JSON.
+**Config format**: local machine state lives at `~/.skillsync/config.json` (managed by `@crustjs/store`). It holds a `username` string and a `repos` map keyed by repo slug (`"owner/repo"`), where each entry is a `RepoConfig` object (`{ repo, team, storePath, linkedAt, lastSync }`). Commands that act on a specific repo (sync, import) infer it automatically when only one repo is joined, or present a `select` prompt when multiple repos exist — a `--repo <owner/repo>` flag skips the prompt. The team repo's `skillsync.json` is committed to git and read as plain JSON; it is never confused with the local config.
 
 **Commit messages**: auto-commits follow the format `[skillsync] @username updated <skill-name>`. Never prompt the user for a commit message.
 
