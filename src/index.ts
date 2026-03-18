@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { Crust } from '@crustjs/core'
+import { helpPlugin, versionPlugin } from '@crustjs/plugins'
 import { runCreate } from './commands/create'
 import { runJoin } from './commands/join'
 import { runSync } from './commands/sync'
@@ -8,6 +9,8 @@ import { runImport } from './commands/import'
 
 const cli = new Crust('skillsync')
   .meta({ description: 'Share and sync Claude Code agents and skills with your team' })
+  .use(helpPlugin())
+  .use(versionPlugin('0.1.0'))
   .command('create', (cmd) =>
     cmd.meta({ description: 'Create a shared team skills repo' }).run(runCreate)
   )

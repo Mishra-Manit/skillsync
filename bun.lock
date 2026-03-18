@@ -6,6 +6,7 @@
       "name": "skillsync",
       "dependencies": {
         "@crustjs/core": "^0.0.15",
+        "@crustjs/plugins": "^0.0.19",
         "@crustjs/prompts": "^0.0.9",
         "@crustjs/store": "^0.0.4",
         "@crustjs/style": "^0.0.5",
@@ -24,6 +25,8 @@
   },
   "packages": {
     "@crustjs/core": ["@crustjs/core@0.0.15", "", { "peerDependencies": { "typescript": "^5" } }, "sha512-dgR1hSNj202a3IUfdj2S7QEG6Wd/2v24aq0Iz45NGTQxxNbBs6j2ENQSJTZeYkaeXjj+hnNrIZ1PiLnHuDxYaA=="],
+
+    "@crustjs/plugins": ["@crustjs/plugins@0.0.19", "", { "dependencies": { "@crustjs/style": "0.0.5" }, "peerDependencies": { "@crustjs/core": "0.0.15", "typescript": "^5" } }, "sha512-z7riDW7q89Oa8YKaLTHvTSgSyLsATMlK1WZ3huhH6w9TvgO+a5AVCOgi7tqi0NDv0D0Bq1wj7Jj/qhnvccyaMQ=="],
 
     "@crustjs/prompts": ["@crustjs/prompts@0.0.9", "", { "dependencies": { "@crustjs/style": "0.0.5" }, "peerDependencies": { "typescript": "^5" } }, "sha512-SXEUHZmfPgUDqkMPMDNF+LqHj1AnjZwQ4R9ne+sPv9BOoYR33UKw9nsuGGZrFGnZWz4eKUSrFiZre24OyctHwQ=="],
 

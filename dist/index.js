@@ -758,6 +758,113 @@ function wz(z) {
 }
 var nV = wz();
 
+// node_modules/@crustjs/plugins/dist/index.js
+function A2(o2) {
+  let n2 = o2.variadic ? `${o2.name}...` : o2.name;
+  return o2.required ? `<${n2}>` : `[${n2}]`;
+}
+function Y(o2, n2, f2) {
+  if (o2.usage)
+    return o2.usage;
+  let s2 = [f2.join(" ")];
+  if (Object.keys(n2.subCommands).length > 0 && !n2.run)
+    s2.push("<command>");
+  if (n2.args)
+    for (let r2 of n2.args)
+      s2.push(A2(r2));
+  if (Object.keys(n2.effectiveFlags).length > 0)
+    s2.push("[options]");
+  return s2.join(" ");
+}
+function I4(o2, n2) {
+  if (n2.short)
+    return `-${n2.short}, --${o2}`;
+  return `--${o2}`;
+}
+function R3(o2) {
+  if (Object.keys(o2).length === 0)
+    return [];
+  let n2 = ["OPTIONS:"];
+  for (let [f2, s2] of Object.entries(o2)) {
+    let r2 = I4(f2, s2).padEnd(18, " ");
+    n2.push(`  ${r2}${s2.description ?? ""}`.trimEnd());
+  }
+  return n2;
+}
+function X3(o2) {
+  if (!o2.args || o2.args.length === 0)
+    return [];
+  let n2 = ["ARGS:"];
+  for (let f2 of o2.args) {
+    let s2 = A2(f2).padEnd(18, " ");
+    n2.push(`  ${s2}${f2.description ?? ""}`.trimEnd());
+  }
+  return n2;
+}
+function _4(o2) {
+  if (Object.keys(o2.subCommands).length === 0)
+    return [];
+  let n2 = ["COMMANDS:"];
+  for (let [f2, s2] of Object.entries(o2.subCommands)) {
+    let r2 = f2.padEnd(10, " ");
+    n2.push(`  ${r2}${s2.meta.description ?? ""}`.trimEnd());
+  }
+  return n2;
+}
+function l2(o2, n2) {
+  let f2 = n2 ?? [o2.meta.name], s2 = [];
+  s2.push(o2.meta.description ? `${f2.join(" ")} - ${o2.meta.description}` : f2.join(" ")), s2.push(""), s2.push("USAGE:"), s2.push(`  ${Y(o2.meta, o2, f2)}`);
+  let r2 = _4(o2);
+  if (r2.length > 0)
+    s2.push(""), s2.push(...r2);
+  let u2 = X3(o2);
+  if (u2.length > 0)
+    s2.push(""), s2.push(...u2);
+  let i2 = R3(o2.effectiveFlags);
+  if (i2.length > 0)
+    s2.push(""), s2.push(...i2);
+  return s2.join(`
+`);
+}
+var z = { type: "boolean", short: "h", inherit: true, description: "Show help" };
+function U2(o2, n2) {
+  n2(o2, "help", z);
+  for (let f2 of Object.values(o2.subCommands))
+    U2(f2, n2);
+}
+function B() {
+  return { name: "help", setup(o2, n2) {
+    U2(o2.rootCommand, n2.addFlag);
+  }, async middleware(o2, n2) {
+    if (!o2.route) {
+      await n2();
+      return;
+    }
+    let f2 = o2.route.command;
+    if (o2.input?.flags.help !== true && f2.run) {
+      await n2();
+      return;
+    }
+    console.log(l2(f2, [...o2.route.commandPath]));
+  } };
+}
+function Ho(o2 = "0.0.0") {
+  return { name: "version", setup(n2, f2) {
+    f2.addFlag(n2.rootCommand, "version", { type: "boolean", short: "v", description: "Show version number" });
+  }, async middleware(n2, f2) {
+    if (!n2.route || n2.route.command !== n2.rootCommand) {
+      await f2();
+      return;
+    }
+    if (!n2.input?.flags.version) {
+      await f2();
+      return;
+    }
+    let s2 = typeof o2 === "function" ? o2() : o2;
+    console.log(`${n2.rootCommand.meta.name} v${s2}`);
+  } };
+}
+
 // src/commands/create.ts
 async function runCreate() {
   process.stderr.write(wV.bold("skillsync create") + `
@@ -803,5 +910,5 @@ async function runImport(skillPath) {
 }
 
 // src/index.ts
-var cli = new R("skillsync").meta({ description: "Share and sync Claude Code agents and skills with your team" }).command("create", (cmd) => cmd.meta({ description: "Create a shared team skills repo" }).run(runCreate)).command("join", (cmd) => cmd.meta({ description: "Join a team skills repo" }).args([{ name: "repo", type: "string", required: true }]).run((ctx) => runJoin(ctx.args.repo))).command("sync", (cmd) => cmd.meta({ description: "Pull and push skill updates" }).run(runSync)).command("status", (cmd) => cmd.meta({ description: "Show current sync state" }).run(runStatus)).command("import", (cmd) => cmd.meta({ description: "Import a local skill into the team repo" }).args([{ name: "path", type: "string", required: true }]).run((ctx) => runImport(ctx.args.path)));
+var cli = new R("skillsync").meta({ description: "Share and sync Claude Code agents and skills with your team" }).use(B()).use(Ho("0.1.0")).command("create", (cmd) => cmd.meta({ description: "Create a shared team skills repo" }).run(runCreate)).command("join", (cmd) => cmd.meta({ description: "Join a team skills repo" }).args([{ name: "repo", type: "string", required: true }]).run((ctx) => runJoin(ctx.args.repo))).command("sync", (cmd) => cmd.meta({ description: "Pull and push skill updates" }).run(runSync)).command("status", (cmd) => cmd.meta({ description: "Show current sync state" }).run(runStatus)).command("import", (cmd) => cmd.meta({ description: "Import a local skill into the team repo" }).args([{ name: "path", type: "string", required: true }]).run((ctx) => runImport(ctx.args.path)));
 await cli.execute();

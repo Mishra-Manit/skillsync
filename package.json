@@ -2,6 +2,7 @@
   "name": "skillsync",
   "version": "0.1.0",
   "description": "Share and sync Claude Code agents and skills with your team",
+  "type": "module",
   "bin": {
     "skillsync": "./dist/index.js"
   },
@@ -13,14 +14,15 @@
   },
   "dependencies": {
     "@crustjs/core": "^0.0.15",
+    "@crustjs/plugins": "^0.0.19",
     "@crustjs/prompts": "^0.0.9",
-    "@crustjs/style": "^0.0.5",
     "@crustjs/store": "^0.0.4",
+    "@crustjs/style": "^0.0.5",
     "@crustjs/validate": "^0.0.13",
-    "simple-git": "^3.27.0",
-    "gray-matter": "^4.0.3",
+    "chokidar": "^4.0.0",
     "diff-match-patch": "^1.0.5",
-    "chokidar": "^4.0.0"
+    "gray-matter": "^4.0.3",
+    "simple-git": "^3.27.0"
   },
   "devDependencies": {
     "@types/bun": "latest",
