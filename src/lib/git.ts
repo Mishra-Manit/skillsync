@@ -1,5 +1,3 @@
-import simpleGit, { type SimpleGit } from 'simple-git'
-
 export class CloneError extends Error {
   constructor(repoSlug: string, detail: string) {
     super(`Failed to clone ${repoSlug}: ${detail}`)
@@ -7,7 +5,7 @@ export class CloneError extends Error {
   }
 }
 
-export async function cloneRepo(repoSlug: string, destPath: string): Promise<SimpleGit> {
+export async function cloneRepo(repoSlug: string, destPath: string): Promise<void> {
   const result = Bun.spawnSync(['gh', 'repo', 'clone', repoSlug, destPath], {
     stdout: 'pipe',
     stderr: 'pipe',
@@ -16,6 +14,4 @@ export async function cloneRepo(repoSlug: string, destPath: string): Promise<Sim
   if (!result.success) {
     throw new CloneError(repoSlug, result.stderr.toString().trim())
   }
-
-  return simpleGit(destPath)
 }

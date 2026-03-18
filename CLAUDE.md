@@ -12,6 +12,8 @@ bun run typecheck      # tsc --noEmit
 bun dist/index.js      # run locally after build
 ```
 
+Write extremely easy to consume code, optimize for how easy the code is to read. Make the code skimmable. Avoid cleverness. Use early returns.
+
 ## Project Structure
 
 ```
@@ -31,7 +33,7 @@ Rules:
 - Use `@crustjs/prompts` for interactive input and `@crustjs/style` for output — never `console.log`
 - All prompt UI renders to stderr; stdout stays clean for piped output
 - Use `@crustjs/store` for any config/state persistence — never write JSON files manually
-- Use `@crustjs/validate` for validating `skillsync.json` and any external data
+- Use `zod` for schema validation of `skillsync.json` and any external data
 
 ## Code Style
 
@@ -39,7 +41,7 @@ Rules:
 - Functions under 50 lines; files under 400 lines
 - No `console.log` anywhere — use `@crustjs/style` for output
 - Async/await throughout; no callbacks
-- `@crustjs/validate` for validating `skillsync.json` and any external data
+- Use `fatal()` from `src/lib/errors.ts` for all error exits — never inline `process.stderr.write` + `process.exit(1)`
 
 ## Key Behaviors (non-obvious)
 
@@ -69,11 +71,7 @@ Do not implement the daemon, multi-target placement (codex/cursor), or merge con
 | `@crustjs/prompts` | Interactive prompts (input, select, multiselect, spinner) |
 | `@crustjs/style` | Terminal color and text formatting |
 | `@crustjs/store` | Typed JSON config persistence at `~/.skillsync/` |
-| `@crustjs/validate` | Schema-first validation wrapping Zod 4 |
-| `simple-git` | Git operations (no shell-out) |
-| `gray-matter` | Parse YAML frontmatter from SKILL.md |
-| `diff-match-patch` | Text merging for future conflict auto-resolution |
-| `chokidar` | Filesystem watcher for optional daemon/auto-sync |
+| `zod` | Schema validation for `skillsync.json` |
 
 See `docs/crustJS.md` for full CrustJS module docs.
 

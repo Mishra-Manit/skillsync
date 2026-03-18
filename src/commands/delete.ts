@@ -1,15 +1,15 @@
 import { style } from '@crustjs/style'
 import { multiselect, confirm } from '@crustjs/prompts'
 import { detectGh } from '../lib/github'
-import { readConfig } from '../lib/config'
-import { listLinkedDetailed, unlinkSkill, hasBackup, restoreBackup, type LinkedItem } from '../lib/placer'
+import { readConfig, exitNoReposJoined, exitRepoNotFound } from '../lib/config'
+import { storeRoot, listLinkedDetailed, unlinkSkill, hasBackup, restoreBackup, type LinkedItem } from '../lib/placer'
 
 type DeleteFlags = {
   repo?: string
   all: boolean
 }
 
-function repoSlugFrom(item: LinkedItem, storeRoot: string): string {
+function repoSlugFrom(item: LinkedItem): string {
   const rel = item.resolvedStorePath.slice(storeRoot.length)
   const parts = rel.split('/')
   return `${parts[0]}/${parts[1]}`
@@ -19,24 +19,9 @@ export async function runDelete(name: string | undefined, flags: DeleteFlags): P
   await detectGh()
 
   const config = await readConfig()
-  if (!config || Object.keys(config.repos).length === 0) {
-    process.stderr.write(
-      style.red('✗ No repos joined.\n') +
-        style.dim('  Run `skillsync join <owner/repo>` first.\n'),
-    )
-    process.exit(1)
-  }
+  if (!config || Object.keys(config.repos).length === 0) exitNoReposJoined()
 
-  if (flags.repo && !config.repos[flags.repo]) {
-    process.stderr.write(
-      style.red(`✗ Repo "${flags.repo}" is not joined.\n`) +
-        style.dim('  Run `skillsync status` to see joined repos.\n'),
-    )
-    process.exit(1)
-  }
-
-  const storeRoot = Object.values(config.repos)[0]!.storePath
-    .split('/store/')[0]! + '/store/'
+  if (flags.repo && !config.repos[flags.repo]) exitRepoNotFound(flags.repo)
 
   let candidates = await listLinkedDetailed()
 
@@ -54,10 +39,10 @@ export async function runDelete(name: string | undefined, flags: DeleteFlags): P
     process.exit(0)
   }
 
-  // Sort by repo → type → name for visual grouping in the multiselect
+  // Sort by repo, type, name for visual grouping
   candidates.sort((a, b) => {
-    const ra = repoSlugFrom(a, storeRoot)
-    const rb = repoSlugFrom(b, storeRoot)
+    const ra = repoSlugFrom(a)
+    const rb = repoSlugFrom(b)
     return ra.localeCompare(rb) || a.type.localeCompare(b.type) || a.name.localeCompare(b.name)
   })
 
@@ -65,7 +50,7 @@ export async function runDelete(name: string | undefined, flags: DeleteFlags): P
 
   if (!name && !flags.all) {
     const choices = candidates.map((item) => ({
-      label: `${item.name}  ${style.dim(`${item.type} · ${repoSlugFrom(item, storeRoot)}`)}`,
+      label: `${item.name}  ${style.dim(`${item.type} · ${repoSlugFrom(item)}`)}`,
       value: item.targetPath,
     }))
     const picked = await multiselect({ message: 'Select items to remove', choices, default: [] })

@@ -14,7 +14,7 @@ type LinkResult =
   | { type: 'backed-up'; backupPath: string }
   | { type: 'skipped'; reason: 'already-linked' | 'collision' }
 
-const storeRoot = join(homedir(), '.skillsync', 'store') + '/'
+export const storeRoot = join(homedir(), '.skillsync', 'store') + '/'
 
 function resolveLink(raw: string, context: string): string {
   return isAbsolute(raw) ? raw : join(dirname(context), raw)
@@ -64,28 +64,6 @@ export async function unlinkSkill(targetPath: string): Promise<void> {
   if (await isOwnedSymlink(targetPath)) {
     await unlink(targetPath)
   }
-}
-
-export async function listLinked(): Promise<string[]> {
-  const dirs = [
-    join(homedir(), '.claude', 'skills'),
-    join(homedir(), '.claude', 'agents'),
-  ]
-  const linked: string[] = []
-  for (const dir of dirs) {
-    try {
-      const entries = await readdir(dir)
-      for (const entry of entries) {
-        const fullPath = join(dir, entry)
-        if (await isOwnedSymlink(fullPath)) {
-          linked.push(fullPath)
-        }
-      }
-    } catch (err: unknown) {
-      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
-    }
-  }
-  return linked
 }
 
 async function scanDir(dir: string, type: 'skill' | 'agent'): Promise<LinkedItem[]> {

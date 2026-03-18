@@ -4,6 +4,7 @@ import { readdir, readFile, rm } from 'fs/promises'
 import { homedir } from 'os'
 import { join } from 'path'
 import { z } from 'zod'
+import { fatal } from '../lib/errors'
 import { detectGh } from '../lib/github'
 import { readConfig, addRepo } from '../lib/config'
 import { cloneRepo, CloneError } from '../lib/git'
@@ -23,11 +24,7 @@ export async function runJoin(repo: string): Promise<void> {
   const { username } = await detectGh()
 
   if (!slugPattern.test(repo)) {
-    process.stderr.write(
-      style.red(`✗ Invalid repo format: "${repo}"\n`) +
-        style.dim('  Expected <owner>/<repo>, e.g. acme/acme-skills\n'),
-    )
-    process.exit(1)
+    fatal(`Invalid repo format: "${repo}"`, 'Expected <owner>/<repo>, e.g. acme/acme-skills')
   }
 
   const [owner, repoName] = repo.split('/') as [string, string]
@@ -43,7 +40,6 @@ export async function runJoin(repo: string): Promise<void> {
       process.stderr.write(style.dim('Skipped. Already joined.\n'))
       process.exit(0)
     }
-    // Remove existing store directory so gh repo clone has a clean target
     await rm(storePath, { recursive: true, force: true })
   }
 
@@ -55,10 +51,7 @@ export async function runJoin(repo: string): Promise<void> {
       },
     })
   } catch (err) {
-    if (err instanceof CloneError) {
-      process.stderr.write(style.red(`✗ ${err.message}\n`))
-      process.exit(1)
-    }
+    if (err instanceof CloneError) fatal(err.message)
     throw err
   }
 
@@ -66,31 +59,22 @@ export async function runJoin(repo: string): Promise<void> {
   try {
     rawJson = await readFile(join(storePath, 'skillsync.json'), 'utf8')
   } catch {
-    process.stderr.write(
-      style.red('✗ No skillsync.json found in the cloned repo.\n') +
-        style.dim('  Is this a valid skillsync team repo?\n'),
-    )
-    process.exit(1)
+    fatal('No skillsync.json found in the cloned repo.', 'Is this a valid skillsync team repo?')
   }
 
   let rawParsed: unknown
   try {
     rawParsed = JSON.parse(rawJson)
   } catch {
-    process.stderr.write(style.red('✗ skillsync.json is not valid JSON.\n'))
-    process.exit(1)
+    fatal('skillsync.json is not valid JSON.')
   }
 
   const parsed = skillsyncJsonSchema.safeParse(rawParsed)
   if (!parsed.success) {
-    process.stderr.write(
-      style.red('✗ skillsync.json is invalid:\n') +
-        parsed.error.issues
-          .map((i) => style.dim(`  ${i.path.join('.')}: ${i.message}`))
-          .join('\n') +
-        '\n',
-    )
-    process.exit(1)
+    const issues = parsed.error.issues
+      .map((i) => `${i.path.join('.')}: ${i.message}`)
+      .join('\n  ')
+    fatal('skillsync.json is invalid:', issues)
   }
 
   await addRepo(

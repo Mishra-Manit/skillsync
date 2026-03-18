@@ -1,8 +1,7 @@
 import { createStore } from '@crustjs/store'
-import { style } from '@crustjs/style'
-import { access } from 'fs/promises'
 import { homedir } from 'os'
 import { join } from 'path'
+import { fatal } from './errors'
 
 export type RepoConfig = {
   repo: string
@@ -35,23 +34,15 @@ const store = createStore({
   },
 })
 
-const configFilePath = join(homedir(), '.skillsync', 'config.json')
-
-async function configExists(): Promise<boolean> {
-  try {
-    await access(configFilePath)
-    return true
-  } catch {
-    return false
-  }
-}
-
 export async function readConfig(): Promise<Config | null> {
-  if (!(await configExists())) return null
-  const raw = await store.read()
-  return {
-    username: raw.username,
-    repos: JSON.parse(raw.repos) as Record<string, RepoConfig>,
+  try {
+    const raw = await store.read()
+    return {
+      username: raw.username,
+      repos: JSON.parse(raw.repos) as Record<string, RepoConfig>,
+    }
+  } catch {
+    return null
   }
 }
 
@@ -79,16 +70,12 @@ export async function removeRepo(slug: string): Promise<void> {
   await writeConfig({ ...config, repos: rest })
 }
 
-function exitRepoNotFound(flag: string): never {
-  process.stderr.write(style.red(`✗ Repo "${flag}" is not in your joined repos.\n`))
-  process.stderr.write(style.dim('  Run `skillsync status` to see joined repos.\n'))
-  process.exit(1)
+export function exitNoReposJoined(): never {
+  fatal('No repos joined.', 'Run `skillsync join <owner/repo>` or `skillsync create` first.')
 }
 
-function exitNoReposJoined(): never {
-  process.stderr.write(style.red('✗ No repos joined.\n'))
-  process.stderr.write(style.dim('  Run `skillsync join <owner/repo>` or `skillsync create` first.\n'))
-  process.exit(1)
+export function exitRepoNotFound(slug: string): never {
+  fatal(`Repo "${slug}" is not in your joined repos.`, 'Run `skillsync status` to see joined repos.')
 }
 
 export function resolveRepo(config: Config, flag?: string): RepoConfig {

@@ -1,27 +1,31 @@
-import { style } from '@crustjs/style'
+import { fatal } from './errors'
 
 export type GhAuth = {
   username: string
 }
 
-type GhAuthAccount = {
+export type GhAuthAccount = {
   active?: boolean
+  host?: string
+  state?: string
   login?: string
+  token?: string
+  scopes?: string
+  gitProtocol?: string
+  tokenSource?: string
 }
 
-type GhAuthStatusJson = {
+export type GhAuthStatusJson = {
   hosts?: Record<string, GhAuthAccount[]>
 }
 
-function pickActiveLogin(hosts: Record<string, GhAuthAccount[]>): string | null {
+export function pickActiveAccount(hosts: Record<string, GhAuthAccount[]>): GhAuthAccount | null {
   const accounts = Object.values(hosts).flat()
-  const active = accounts.find((account) => account.active)
-  const candidate = active ?? accounts[0]
-  return candidate?.login ?? null
+  return accounts.find((a) => a.active) ?? accounts[0] ?? null
 }
 
 export async function detectGh(): Promise<GhAuth> {
-  // Check that gh is in PATH
+  // Confirm gh is in PATH
   try {
     const versionResult = Bun.spawnSync(['gh', '--version'], {
       stdout: 'pipe',
@@ -29,46 +33,42 @@ export async function detectGh(): Promise<GhAuth> {
     })
     if (!versionResult.success) throw new Error('gh exited non-zero')
   } catch {
-    process.stderr.write(style.red('✗ gh CLI is not installed.\n'))
-    process.stderr.write(style.dim('  Install it from https://cli.github.com, then run `gh auth login`.\n'))
-    process.exit(1)
+    fatal('gh CLI is not installed.', 'Install it from https://cli.github.com, then run `gh auth login`.')
   }
 
+  // Confirm gh is authenticated
   const authJsonResult = Bun.spawnSync(['gh', 'auth', 'status', '--json', 'hosts'], {
     stdout: 'pipe',
     stderr: 'pipe',
   })
 
-  // gh auth status --json exits 0 even when account has issues; non-zero is a fatal error.
   if (!authJsonResult.success) {
-    process.stderr.write(style.red('✗ gh CLI is installed but you are not logged in.\n'))
-    process.stderr.write(style.dim('  Run `gh auth login` to authenticate, then retry.\n'))
-    process.exit(1)
+    fatal('gh CLI is installed but you are not logged in.', 'Run `gh auth login` to authenticate, then retry.')
   }
 
-  const authJsonRaw = authJsonResult.stdout.toString().trim()
+  // Try JSON parsing first
+  const raw = authJsonResult.stdout.toString().trim()
   try {
-    const parsed = JSON.parse(authJsonRaw) as GhAuthStatusJson
-    const username = parsed.hosts ? pickActiveLogin(parsed.hosts) : null
-
-    if (username) {
-      return { username }
-    }
+    const parsed = JSON.parse(raw) as GhAuthStatusJson
+    const account = parsed.hosts ? pickActiveAccount(parsed.hosts) : null
+    if (account?.login) return { username: account.login }
   } catch {
-    // Fall through to text parsing fallback.
+    // Fall through to text parsing
   }
 
-  const authTextResult = Bun.spawnSync(['gh', 'auth', 'status'], {
+  // Text fallback
+  const textResult = Bun.spawnSync(['gh', 'auth', 'status'], {
     stdout: 'pipe',
     stderr: 'pipe',
   })
-  const output = authTextResult.stderr.toString() + authTextResult.stdout.toString()
+  const output = textResult.stderr.toString() + textResult.stdout.toString()
   const match = output.match(/Logged in to \S+ account (\S+)/)
 
   if (!match) {
-    process.stderr.write(style.red('✗ Could not determine GitHub username from gh auth status.\n'))
-    process.stderr.write(style.dim('  Try running `gh auth status` manually to inspect the output.\n'))
-    process.exit(1)
+    fatal(
+      'Could not determine GitHub username from gh auth status.',
+      'Try running `gh auth status` manually to inspect the output.',
+    )
   }
 
   return { username: match[1]! }

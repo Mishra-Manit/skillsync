@@ -2,22 +2,17 @@ import { style } from '@crustjs/style'
 import { select, confirm } from '@crustjs/prompts'
 import { rm } from 'fs/promises'
 import { detectGh } from '../lib/github'
-import { readConfig, removeRepo, type RepoConfig } from '../lib/config'
+import { readConfig, removeRepo, exitNoReposJoined, exitRepoNotFound, type RepoConfig } from '../lib/config'
 import { listLinkedDetailed, unlinkSkill } from '../lib/placer'
 
 async function resolveTarget(repos: Record<string, RepoConfig>, arg?: string): Promise<RepoConfig> {
   if (arg) {
     const entry = repos[arg]
-    if (!entry) {
-      process.stderr.write(style.red(`✗ Repo "${arg}" is not in your joined repos.\n`))
-      process.stderr.write(style.dim('  Run `skillsync status` to see joined repos.\n'))
-      process.exit(1)
-    }
+    if (!entry) exitRepoNotFound(arg)
     return entry
   }
 
   const entries = Object.values(repos)
-
   if (entries.length === 1) return entries[0]!
 
   const choices = entries.map((r) => ({ label: r.repo, value: r.repo }))
@@ -29,11 +24,7 @@ export async function runLeave(arg?: string): Promise<void> {
   await detectGh()
 
   const config = await readConfig()
-  if (!config || Object.keys(config.repos).length === 0) {
-    process.stderr.write(style.red('✗ No repos joined.\n'))
-    process.stderr.write(style.dim('  Run `skillsync join <owner/repo>` first.\n'))
-    process.exit(1)
-  }
+  if (!config || Object.keys(config.repos).length === 0) exitNoReposJoined()
 
   const target = await resolveTarget(config.repos, arg)
 

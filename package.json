@@ -22,17 +22,11 @@
     "@crustjs/prompts": "^0.0.9",
     "@crustjs/store": "^0.0.4",
     "@crustjs/style": "^0.0.5",
-    "@crustjs/validate": "^0.0.13",
-    "chokidar": "^4.0.0",
-    "diff-match-patch": "^1.0.5",
-    "gray-matter": "^4.0.3",
-    "simple-git": "^3.27.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@eslint/js": "^9.22.0",
     "@types/bun": "latest",
-    "@types/diff-match-patch": "^1.0.0",
     "eslint": "^9.22.0",
     "typescript-eslint": "^8.26.1",
     "typescript": "^5.0.0"
