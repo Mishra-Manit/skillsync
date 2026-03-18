@@ -206,7 +206,7 @@ Runs `skillsync sync` automatically in the background.
 - Logs sync events to `~/.skillsync/daemon.log`
 - Runs as a detached Bun process, PID stored at `~/.skillsync/daemon.pid`
 
-**v0 note**: daemon is optional. The core value works with manual `sync`. Auto-sync is a v1 feature.
+Note: daemon is optional. The core value works with manual `sync`. Auto-sync can be enabled later.
 
 ---
 
@@ -307,8 +307,6 @@ When the lead runs `create`, after the repo is seeded, the CLI scans these direc
 ```
 ~/.claude/skills/
 ~/.claude/agents/
-~/.codex/skills/
-~/.cursor/skills/
 ```
 
 For each skill directory found, it reads the SKILL.md frontmatter (`name`, `description`) to display a meaningful label. Duplicate names across tool directories are deduplicated (Claude's copy wins).
@@ -365,9 +363,9 @@ On non-symlink-friendly platforms, falls back to copy mode (`--copy` flag or con
 
 ---
 
-## Sync Engine (v1)
+## Sync Engine
 
-For teams that edit skills frequently:
+For teams that edit skills frequently, auto-sync can run this loop:
 
 1. **Local change detected** (chokidar event, debounced 2s)
 2. Parse changed SKILL.md files
@@ -476,24 +474,25 @@ skillsync/
 
 ---
 
-## v0 Scope (Ship This First)
+## Current Scope
 
-| Command | Included |
-|---------|----------|
-| `create` | Yes — repo creation, invites, import flow |
-| `join` | Yes — clone, symlink, conflict backup |
-| `sync` | Yes — manual one-shot |
-| `status` | Yes — current state display |
-| `import` | Yes — add a skill post-setup |
-| `daemon` | No — v1 |
-| Multi-target (codex, cursor) | No — v1 |
-| Merge conflict resolution | No — v1 (v0 fails loudly and tells you to resolve manually) |
+| Command/Feature | Status |
+|-----------------|--------|
+| `create` | Included — repo creation, invites, import flow |
+| `join` | Included — clone, symlink, conflict backup |
+| `sync` | Included — manual one-shot |
+| `status` | Included — current state display |
+| `import` | Included — add a skill post-setup |
+| `check-git` | Included — gh setup diagnostics |
+| `daemon` | Not in current implementation |
+| Multi-target (codex, cursor) | Not in current implementation |
+| Merge conflict auto-resolution | Not in current implementation (sync fails loudly and asks for manual resolution) |
 
-v0 success metric: a team lead can go from `bunx skillsync create` to a teammate successfully running `bunx skillsync join` and having skills in Claude Code in under 60 seconds (excluding GitHub invite accept time).
+Current success metric: a team lead can go from `bunx skillsync create` to a teammate successfully running `bunx skillsync join` and having skills in Claude Code in under 60 seconds (excluding GitHub invite accept time).
 
 ---
 
-## v1 Features
+## Future Enhancements
 
 - Daemon with auto-sync (chokidar + poll)
 - Frontmatter-aware conflict merging (diff-match-patch)
@@ -501,9 +500,6 @@ v0 success metric: a team lead can go from `bunx skillsync create` to a teammate
 - `skillsync diff <skill>` — compare local backup to team version
 - Desktop notifications on sync failure
 - Project-level mode: `skillsync init --local` — skills live in the project repo, no separate repo needed
-
-## v2 Ideas
-
 - `skillsync add <url>` — pull a community skill from skills.sh or a GitHub URL into the team repo
 - Web dashboard for team skill activity
 - Claude Code plugin integration for auto-discovery
@@ -537,15 +533,15 @@ v0 success metric: a team lead can go from `bunx skillsync create` to a teammate
 
 ### Phase 1 — Scaffold
 
-**Goal:** `bun dist/index.js --help` prints all five subcommands. Nothing else works yet.
+**Goal:** `bun dist/index.js --help` prints all six subcommands. Nothing else works yet.
 
 - [ ] Initialize `package.json` (`name: skillsync`, `type: module`), `tsconfig.json` (`strict: true`, `outDir: dist/`), `.gitignore`
-- [ ] Install all v0 dependencies: `@crustjs/core`, `@crustjs/prompts`, `@crustjs/style`, `@crustjs/store`, `@crustjs/validate`, `simple-git`, `gray-matter`
+- [ ] Install core dependencies: `@crustjs/core`, `@crustjs/prompts`, `@crustjs/style`, `@crustjs/store`, `@crustjs/validate`, `simple-git`, `gray-matter`
 - [ ] Add `bun run build`, `bun run dev` (watch), `bun run typecheck`, `bun run lint` scripts
-- [ ] Create `src/index.ts` — register `create`, `join`, `sync`, `status`, `import` as stub handlers that just print `"not implemented"` via `@crustjs/style`
+- [ ] Create `src/index.ts` — register `create`, `join`, `sync`, `status`, `import`, `check-git` as stub handlers that just print `"not implemented"` via `@crustjs/style`
 - [ ] Add `bin.skillsync` field to `package.json` pointing to `dist/index.js`
 
-**Smoke test:** `bun run build && bun dist/index.js --help` lists all five commands. `bun run typecheck` passes with zero errors.
+**Smoke test:** `bun run build && bun dist/index.js --help` lists all six commands. `bun run typecheck` passes with zero errors.
 
 ---
 
@@ -561,7 +557,8 @@ v0 success metric: a team lead can go from `bunx skillsync create` to a teammate
 - [ ] `writeConfig(config: Config)` — atomic write via store; creates `~/.skillsync/` if needed
 - [ ] `addRepo(entry: RepoConfig)` — read current config (or create a fresh empty one), merge the new entry into `config.repos` keyed by `entry.repo`, then call `writeConfig()`; never modifies any other existing repo entry
 - [ ] `removeRepo(slug: string)` — remove the entry at `config.repos[slug]` and call `writeConfig()`; no-op if the slug is not present
-- [ ] `resolveRepo(config: Config, flag?: string): RepoConfig` — shared helper used by `sync` and `import`: if `flag` is set, look up `config.repos[flag]` and error with a styled message if not found; if `config.repos` has exactly one entry, return it automatically; otherwise throw a `NeedsRepoSelectError` that the calling command catches to show a `select` prompt before retrying
+- [ ] `resolveRepo(config: Config, flag?: string): RepoConfig` — helper for commands that act on exactly one repo (e.g. `import`): if `flag` is set, look up `config.repos[flag]` and error with a styled message if not found; if `config.repos` has exactly one entry, return it automatically; otherwise throw a `NeedsRepoSelectError` that the calling command catches to show a `select` prompt before retrying
+- [ ] `resolveSyncRepos(config: Config, flag?: string): RepoConfig[]` — helper for `sync`: if `flag` is set, return `[config.repos[flag]]` (styled error if missing); if no flag is set, return all joined repos; if none are joined, print a styled error and exit
 
 **`src/lib/github.ts`** (pre-flight only — GitHub API calls come in Phase 6)
 - [ ] `detectGh()` — run `gh --version` (confirms in PATH), then `gh auth status` (confirms login); parse authenticated username from output; return `{ username: string }` on success; on any failure print a styled two-line error (what went wrong + how to fix it) and `process.exit(1)`
@@ -646,7 +643,7 @@ v0 success metric: a team lead can go from `bunx skillsync create` to a teammate
 - [ ] `inviteCollaborator(repoSlug, emailOrUsername)` — `gh api /repos/<slug>/collaborators/<user> -X PUT`; handle org repos (support email) vs personal repos (username only); return `'invited' | 'already-member' | 'error'` — never throw, let the caller handle per-invitee results
 
 **`src/lib/discovery.ts`**
-- [ ] `discoverLocalSkills()` — scan `~/.claude/skills/` and `~/.claude/agents/` (v0 only; codex/cursor in v1)
+- [ ] `discoverLocalSkills()` — scan `~/.claude/skills/` and `~/.claude/agents/`
 - [ ] For each subdirectory, attempt to parse `SKILL.md` frontmatter with `gray-matter`; skip silently if missing
 - [ ] Deduplicate by `name` frontmatter field (first found wins)
 - [ ] Return `DiscoveredSkill[]`: `{ name, description, sourcePath, type: 'skill' | 'agent' }`
@@ -710,13 +707,13 @@ v0 success metric: a team lead can go from `bunx skillsync create` to a teammate
 
 ---
 
-### Phase 9 — v1: Daemon + Auto-sync
+### Phase 9 — Optional Later: Daemon + Auto-sync
 
-After v0 is being actively used by at least one real team.
+After the core flow is being actively used by at least one real team.
 
 - [ ] `src/lib/watcher.ts` — watch `~/.skillsync/store/` with chokidar; debounce 2 seconds before triggering sync
 - [ ] Add a 60-second remote poll loop alongside the file watcher
 - [ ] `src/commands/daemon.ts` — `start` (detach with `Bun.spawn`, write PID to `~/.skillsync/daemon.pid`), `stop` (read PID, `kill`), `status` (check PID is alive)
 - [ ] `src/lib/merger.ts` — frontmatter-aware three-way merge using `gray-matter` + `diff-match-patch`; merge body independently of frontmatter
-- [ ] Replace the v0 `SyncConflictError` bail-out in `git.ts` with the merger; only fail loudly if the merger itself cannot resolve
+- [ ] Replace the current `SyncConflictError` bail-out in `git.ts` with the merger; only fail loudly if the merger itself cannot resolve
 - [ ] Extend `placer.ts` for multi-target placement: `~/.codex/skills/` and `~/.cursor/skills/` driven by `targets` in `skillsync.json`
