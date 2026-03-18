@@ -6,6 +6,7 @@ import { runJoin } from './commands/join'
 import { runSync } from './commands/sync'
 import { runStatus } from './commands/status'
 import { runImport } from './commands/import'
+import { runCheckGit } from './commands/check-git'
 
 const cli = new Crust('skillsync')
   .meta({ description: 'Share and sync Claude Code agents and skills with your team' })
@@ -31,6 +32,9 @@ const cli = new Crust('skillsync')
       .meta({ description: 'Import a local skill into the team repo' })
       .args([{ name: 'path', type: 'string', required: true }] as const)
       .run((ctx) => runImport(ctx.args.path))
+  )
+  .command('check-git', (cmd) =>
+    cmd.meta({ description: 'Check gh CLI version and authentication status' }).run(runCheckGit)
   )
 
 await cli.execute()

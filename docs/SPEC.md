@@ -241,6 +241,29 @@ $ skillsync status  # when no repos are joined
 
 ---
 
+### `skillsync check-git`
+
+Diagnostic command. Runs the pre-flight `detectGh()` check and displays all information gathered from the `gh` CLI — version, authenticated user, host, auth method, protocol, token (masked), and token scopes. Useful for verifying that the `gh` CLI is correctly installed and authenticated before running other commands.
+
+Exits 1 with a styled error if `gh` is not installed or the user is not logged in (same behaviour as every other command).
+
+```
+$ skillsync check-git
+
+  gh CLI check
+
+  Version    2.62.0
+  User       @alice
+  Host       github.com
+  Auth       oauth_token
+  Protocol   https
+  Token      gho_***
+  Scopes     gist, read:org, repo, workflow
+
+```
+
+---
+
 ### `skillsync import <path>`
 
 Adds a skill from the local machine into a shared team repo after initial setup.
@@ -534,7 +557,7 @@ v0 success metric: a team lead can go from `bunx skillsync create` to a teammate
 - [ ] Define `RepoConfig` type: `{ repo: string, team: string, storePath: string, linkedAt: string, lastSync: string | null }` — one entry per joined repo; `storePath` is the absolute local clone path (e.g. `~/.skillsync/store/acme/acme-skills`)
 - [ ] Define `Config` type: `{ username: string, repos: Record<string, RepoConfig> }` — `repos` is keyed by repo slug `"owner/repo"`
 - [ ] Define `@crustjs/store` schema and initialize the store at `~/.skillsync/`
-- [ ] `readConfig()` — return typed `Config` or `null` if the store file does not exist
+- [ ] `readConfig()` — return typed `Config` or `null` if the store filew does not exist
 - [ ] `writeConfig(config: Config)` — atomic write via store; creates `~/.skillsync/` if needed
 - [ ] `addRepo(entry: RepoConfig)` — read current config (or create a fresh empty one), merge the new entry into `config.repos` keyed by `entry.repo`, then call `writeConfig()`; never modifies any other existing repo entry
 - [ ] `removeRepo(slug: string)` — remove the entry at `config.repos[slug]` and call `writeConfig()`; no-op if the slug is not present

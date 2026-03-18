@@ -865,8 +865,45 @@ function Ho(o2 = "0.0.0") {
   } };
 }
 
+// src/lib/github.ts
+async function detectGh() {
+  try {
+    const versionResult = Bun.spawnSync(["gh", "--version"], {
+      stdout: "pipe",
+      stderr: "pipe"
+    });
+    if (!versionResult.success)
+      throw new Error("gh exited non-zero");
+  } catch {
+    process.stderr.write(wV.red(`\u2717 gh CLI is not installed.
+`));
+    process.stderr.write(wV.dim("  Install it from https://cli.github.com, then run `gh auth login`.\n"));
+    process.exit(1);
+  }
+  const authResult = Bun.spawnSync(["gh", "auth", "status"], {
+    stdout: "pipe",
+    stderr: "pipe"
+  });
+  if (!authResult.success) {
+    process.stderr.write(wV.red(`\u2717 gh CLI is installed but you are not logged in.
+`));
+    process.stderr.write(wV.dim("  Run `gh auth login` to authenticate, then retry.\n"));
+    process.exit(1);
+  }
+  const output = authResult.stderr.toString() + authResult.stdout.toString();
+  const match = output.match(/Logged in to \S+ account (\S+)/);
+  if (!match) {
+    process.stderr.write(wV.red(`\u2717 Could not determine GitHub username from gh auth status.
+`));
+    process.stderr.write(wV.dim("  Try running `gh auth status` manually to inspect the output.\n"));
+    process.exit(1);
+  }
+  return { username: match[1] };
+}
+
 // src/commands/create.ts
 async function runCreate() {
+  const { username } = await detectGh();
   process.stderr.write(wV.bold("skillsync create") + `
 `);
   process.stderr.write(wV.yellow("Not yet implemented.") + `
@@ -875,6 +912,7 @@ async function runCreate() {
 
 // src/commands/join.ts
 async function runJoin(repo) {
+  const { username } = await detectGh();
   process.stderr.write(wV.bold("skillsync join") + `
 `);
   process.stderr.write(`Joining ${repo}...
@@ -885,6 +923,7 @@ async function runJoin(repo) {
 
 // src/commands/sync.ts
 async function runSync() {
+  const { username } = await detectGh();
   process.stderr.write(wV.bold("skillsync sync") + `
 `);
   process.stderr.write(wV.yellow("Not yet implemented.") + `
@@ -893,6 +932,7 @@ async function runSync() {
 
 // src/commands/status.ts
 async function runStatus() {
+  const { username } = await detectGh();
   process.stderr.write(wV.bold("skillsync status") + `
 `);
   process.stderr.write(wV.yellow("Not yet implemented.") + `
@@ -901,6 +941,7 @@ async function runStatus() {
 
 // src/commands/import.ts
 async function runImport(skillPath) {
+  const { username } = await detectGh();
   process.stderr.write(wV.bold("skillsync import") + `
 `);
   process.stderr.write(`Importing from ${skillPath}...
@@ -909,6 +950,63 @@ async function runImport(skillPath) {
 `);
 }
 
+// src/commands/check-git.ts
+function parseVersion(output) {
+  const match = output.match(/gh version (\S+)/);
+  return match ? match[1] : "unknown";
+}
+function parseAuthDetails(output) {
+  const hostMatch = output.match(/^(\S+)\s*$/m);
+  const authMethodMatch = output.match(/account \S+ \((\S+)\)/);
+  const protocolMatch = output.match(/configured to use (\S+) protocol/);
+  const tokenMatch = output.match(/Token:\s+(\S+)/);
+  const scopesMatch = output.match(/Token scopes:\s+(.+)/);
+  return {
+    host: hostMatch ? hostMatch[1] : "github.com",
+    authMethod: authMethodMatch ? authMethodMatch[1] : "unknown",
+    protocol: protocolMatch ? protocolMatch[1] : "unknown",
+    token: tokenMatch ? tokenMatch[1] : "unknown",
+    scopes: scopesMatch ? scopesMatch[1].replace(/'/g, "").trim() : "unknown"
+  };
+}
+async function runCheckGit() {
+  const { username } = await detectGh();
+  const versionResult = Bun.spawnSync(["gh", "--version"], {
+    stdout: "pipe",
+    stderr: "pipe"
+  });
+  const authResult = Bun.spawnSync(["gh", "auth", "status"], {
+    stdout: "pipe",
+    stderr: "pipe"
+  });
+  const version = parseVersion(versionResult.stdout.toString());
+  const authOutput = authResult.stderr.toString() + authResult.stdout.toString();
+  const { host, authMethod, protocol, token, scopes } = parseAuthDetails(authOutput);
+  const label = (s2) => wV.dim(s2.padEnd(11));
+  process.stderr.write(`
+`);
+  process.stderr.write("  " + wV.bold("gh CLI check") + `
+`);
+  process.stderr.write(`
+`);
+  process.stderr.write(`  ${label("Version")}${version}
+`);
+  process.stderr.write(`  ${label("User")}${wV.green("@" + username)}
+`);
+  process.stderr.write(`  ${label("Host")}${host}
+`);
+  process.stderr.write(`  ${label("Auth")}${authMethod}
+`);
+  process.stderr.write(`  ${label("Protocol")}${protocol}
+`);
+  process.stderr.write(`  ${label("Token")}${token}
+`);
+  process.stderr.write(`  ${label("Scopes")}${scopes}
+`);
+  process.stderr.write(`
+`);
+}
+
 // src/index.ts
-var cli = new R("skillsync").meta({ description: "Share and sync Claude Code agents and skills with your team" }).use(B()).use(Ho("0.1.0")).command("create", (cmd) => cmd.meta({ description: "Create a shared team skills repo" }).run(runCreate)).command("join", (cmd) => cmd.meta({ description: "Join a team skills repo" }).args([{ name: "repo", type: "string", required: true }]).run((ctx) => runJoin(ctx.args.repo))).command("sync", (cmd) => cmd.meta({ description: "Pull and push skill updates" }).run(runSync)).command("status", (cmd) => cmd.meta({ description: "Show current sync state" }).run(runStatus)).command("import", (cmd) => cmd.meta({ description: "Import a local skill into the team repo" }).args([{ name: "path", type: "string", required: true }]).run((ctx) => runImport(ctx.args.path)));
+var cli = new R("skillsync").meta({ description: "Share and sync Claude Code agents and skills with your team" }).use(B()).use(Ho("0.1.0")).command("create", (cmd) => cmd.meta({ description: "Create a shared team skills repo" }).run(runCreate)).command("join", (cmd) => cmd.meta({ description: "Join a team skills repo" }).args([{ name: "repo", type: "string", required: true }]).run((ctx) => runJoin(ctx.args.repo))).command("sync", (cmd) => cmd.meta({ description: "Pull and push skill updates" }).run(runSync)).command("status", (cmd) => cmd.meta({ description: "Show current sync state" }).run(runStatus)).command("import", (cmd) => cmd.meta({ description: "Import a local skill into the team repo" }).args([{ name: "path", type: "string", required: true }]).run((ctx) => runImport(ctx.args.path))).command("check-git", (cmd) => cmd.meta({ description: "Check gh CLI version and authentication status" }).run(runCheckGit));
 await cli.execute();
