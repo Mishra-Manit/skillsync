@@ -1,8 +1,8 @@
-import * as p from '@clack/prompts'
+import { spinner } from '@crustjs/prompts'
+import { style } from '@crustjs/style'
 
 export async function runJoin(repo: string): Promise<void> {
-  p.intro('skillsync join')
-  p.log.info(`Joining ${repo}...`)
-  p.log.info('Not yet implemented.')
-  p.outro('Done.')
+  process.stderr.write(style.bold('skillsync join') + '\n')
+  process.stderr.write(`Joining ${repo}...\n`)
+  process.stderr.write(style.yellow('Not yet implemented.') + '\n')
 }

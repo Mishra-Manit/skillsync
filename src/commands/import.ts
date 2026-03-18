@@ -1,8 +1,8 @@
-import * as p from '@clack/prompts'
+import { spinner } from '@crustjs/prompts'
+import { style } from '@crustjs/style'
 
 export async function runImport(skillPath: string): Promise<void> {
-  p.intro('skillsync import')
-  p.log.info(`Importing from ${skillPath}...`)
-  p.log.info('Not yet implemented.')
-  p.outro('Done.')
+  process.stderr.write(style.bold('skillsync import') + '\n')
+  process.stderr.write(`Importing from ${skillPath}...\n`)
+  process.stderr.write(style.yellow('Not yet implemented.') + '\n')
 }

@@ -1,7 +1,6 @@
-import * as p from '@clack/prompts'
+import { style } from '@crustjs/style'
 
 export async function runStatus(): Promise<void> {
-  p.intro('skillsync status')
-  p.log.info('Not yet implemented.')
-  p.outro('Done.')
+  process.stderr.write(style.bold('skillsync status') + '\n')
+  process.stderr.write(style.yellow('Not yet implemented.') + '\n')
 }

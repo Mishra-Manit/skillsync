@@ -1,7 +1,7 @@
-import * as p from '@clack/prompts'
+import { spinner } from '@crustjs/prompts'
+import { style } from '@crustjs/style'
 
 export async function runSync(): Promise<void> {
-  p.intro('skillsync sync')
-  p.log.info('Not yet implemented.')
-  p.outro('Done.')
+  process.stderr.write(style.bold('skillsync sync') + '\n')
+  process.stderr.write(style.yellow('Not yet implemented.') + '\n')
 }

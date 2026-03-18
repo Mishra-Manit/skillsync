@@ -6,18 +6,25 @@
     "skillsync": "./dist/index.js"
   },
   "scripts": {
-    "build": "tsc && chmod +x dist/index.js",
-    "dev": "tsx src/index.ts",
+    "build": "bun build src/index.ts --outdir dist --target bun && chmod +x dist/index.js",
+    "dev": "bun --watch src/index.ts",
+    "lint": "eslint src",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@clack/prompts": "^0.7.0",
-    "commander": "^12.0.0",
-    "picocolors": "^1.1.0"
+    "@crustjs/core": "^0.0.15",
+    "@crustjs/prompts": "^0.0.9",
+    "@crustjs/style": "^0.0.5",
+    "@crustjs/store": "^0.0.4",
+    "@crustjs/validate": "^0.0.13",
+    "simple-git": "^3.27.0",
+    "gray-matter": "^4.0.3",
+    "diff-match-patch": "^1.0.5",
+    "chokidar": "^4.0.0"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0",
-    "tsx": "^4.0.0",
+    "@types/bun": "latest",
+    "@types/diff-match-patch": "^1.0.0",
     "typescript": "^5.0.0"
   }
 }

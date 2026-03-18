@@ -1,7 +1,7 @@
-import * as p from '@clack/prompts'
+import { input, confirm, multiselect, spinner } from '@crustjs/prompts'
+import { style } from '@crustjs/style'
 
 export async function runCreate(): Promise<void> {
-  p.intro('skillsync create')
-  p.log.info('Not yet implemented.')
-  p.outro('Done.')
+  process.stderr.write(style.bold('skillsync create') + '\n')
+  process.stderr.write(style.yellow('Not yet implemented.') + '\n')
 }

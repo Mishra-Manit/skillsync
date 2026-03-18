@@ -1,15 +1,15 @@
 # skillsync
 
-CLI tool for sharing and syncing Claude Code agents and skills across a dev team. TypeScript + Node.js, distributed via npx.
+CLI tool for sharing and syncing Claude Code agents and skills across a dev team. TypeScript + Bun, distributed via bunx.
 
 ## Commands
 
 ```bash
-npm run build          # compile TypeScript → dist/
-npm run dev            # ts-node watch mode
-npm run lint           # eslint
-npm run typecheck      # tsc --noEmit
-node dist/index.js     # run locally after build
+bun run build          # compile TypeScript → dist/
+bun run dev            # watch mode
+bun run lint           # eslint
+bun run typecheck      # tsc --noEmit
+bun dist/index.js      # run locally after build
 ```
 
 ## Project Structure
@@ -18,49 +18,28 @@ node dist/index.js     # run locally after build
 src/
   commands/    # one file per CLI command (create, join, sync, daemon, status, import)
   lib/         # shared logic (git, watcher, merger, placer, discovery, config, github)
-  index.ts     # Commander entrypoint — register commands here, thin as possible
+  index.ts     # @crustjs/core entrypoint — register subcommands here, thin as possible
 ```
 
-Each command file imports only from `lib/`. Commands contain no business logic — they wire up Clack prompts and call lib functions.
+Each command file imports only from `lib/`. Commands contain no business logic — they wire up @crustjs/prompts and call lib functions.
 
-## CLI Patterns
+## CrustJS
 
-**Always use Clack for user-facing output — never `console.log`.**
+This project uses CrustJS as its CLI framework. For all API usage, patterns, and module docs see `docs/crustJS.md`.
 
-```typescript
-import * as p from '@clack/prompts'
-
-p.intro('skillsync create')       // session start
-p.log.info('...')                  // informational
-p.log.success('...')               // success
-p.log.warn('...')                  // warning
-p.log.error('...')                 // error
-p.outro('...')                     // session end
-
-const s = p.spinner()
-s.start('Cloning repo...')
-// ... async work
-s.stop('Cloned.')
-```
-
-**Always guard against Ctrl+C cancellation:**
-
-```typescript
-const name = await p.text({ message: 'Team name?' })
-if (p.isCancel(name)) {
-  p.cancel('Cancelled.')
-  process.exit(0)
-}
-```
+Rules:
+- Use `@crustjs/prompts` for interactive input and `@crustjs/style` for output — never `console.log`
+- All prompt UI renders to stderr; stdout stays clean for piped output
+- Use `@crustjs/store` for any config/state persistence — never write JSON files manually
+- Use `@crustjs/validate` for validating `skillsync.json` and any external data
 
 ## Code Style
 
 - Immutable patterns only — never mutate objects or arrays
 - Functions under 50 lines; files under 400 lines
-- No `console.log` anywhere — use `p.log.*`
-- Use `picocolors` for any manual color formatting (not chalk)
+- No `console.log` anywhere — use `@crustjs/style` for output
 - Async/await throughout; no callbacks
-- Zod for validating `skillsync.toml` and any external data
+- `@crustjs/validate` for validating `skillsync.json` and any external data
 
 ## Key Behaviors (non-obvious)
 
@@ -71,6 +50,8 @@ if (p.isCancel(name)) {
 **gh CLI detection**: `github.ts` shells out to `gh auth status` to detect if the user is authenticated. If `gh` is unavailable or unauthenticated, fall back to plain `git` and tell the user to push manually.
 
 **Store location**: `~/.skillsync/store/` is the canonical local copy. Tool directories (`~/.claude/skills/`, etc.) contain symlinks pointing into the store.
+
+**Config format**: local machine state lives at `~/.skillsync/config.json` (managed by `@crustjs/store`). The team repo's `skillsync.json` is committed to git and read as plain JSON.
 
 **Commit messages**: auto-commits follow the format `[skillsync] @username updated <skill-name>`. Never prompt the user for a commit message.
 
@@ -84,15 +65,18 @@ Do not implement the daemon, multi-target placement (codex/cursor), or merge con
 
 | Package | Purpose |
 |---------|---------|
-| `@clack/prompts` | All interactive prompts and output |
-| `commander` | Command routing |
+| `@crustjs/core` | Command routing and subcommand registration |
+| `@crustjs/prompts` | Interactive prompts (input, select, multiselect, spinner) |
+| `@crustjs/style` | Terminal color and text formatting |
+| `@crustjs/store` | Typed JSON config persistence at `~/.skillsync/` |
+| `@crustjs/validate` | Schema-first validation wrapping Zod 4 |
 | `simple-git` | Git operations (no shell-out) |
 | `gray-matter` | Parse YAML frontmatter from SKILL.md |
 | `diff-match-patch` | Text merging (v1 only) |
 | `chokidar` | Filesystem watcher (daemon, v1 only) |
-| `picocolors` | Manual color formatting |
-| `zod` | Config validation |
+
+See `docs/crustJS.md` for full CrustJS module docs.
 
 ## Spec
 
-Full product spec lives in `SPEC.md`. Read it before implementing any new command.
+Full product spec lives in `docs/SPEC.md`. Read it before implementing any new command.
