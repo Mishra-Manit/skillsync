@@ -5,9 +5,10 @@ import { homedir } from 'os'
 import { join } from 'path'
 import { fatal } from '../lib/errors'
 import { detectGh, createRepo, inviteCollaborator } from '../lib/github'
-import { cloneRepo, CloneError, commitAll, push } from '../lib/git'
+import { initRepo, addRemote, GitError, commitAll, push } from '../lib/git'
 import { addRepo } from '../lib/config'
 import { discoverLocalSkills } from '../lib/discovery'
+import { linkAllFromStore } from '../lib/placer'
 import { ui } from '../lib/ui'
 
 const teamNamePattern = /^[a-z0-9-]+$/
@@ -180,19 +181,25 @@ export async function runCreate(): Promise<void> {
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
   }
 
-  // Create repo on GitHub and clone
+  // Create repo on GitHub, then initialize locally and set remote
   let repoSlug: string
   try {
     repoSlug = (await spinner({
       message: `Creating ${slug}...`,
       task: async () => {
-        const { slug: created } = createRepo(teamName, org || undefined, visibility)
-        cloneRepo(created, storePath)
+        const { slug: created, url } = createRepo(teamName, org || undefined, visibility)
+        initRepo(storePath)
+        addRemote(storePath, url)
         return created
       },
     })) as string
   } catch (err) {
-    if (err instanceof CloneError) fatal(err.message)
+    if (err instanceof GitError) {
+      fatal(
+        err.message,
+        `The repo may have been created on GitHub. Delete it with \`gh repo delete ${slug}\` if needed.`,
+      )
+    }
     throw err
   }
 
@@ -223,6 +230,19 @@ export async function runCreate(): Promise<void> {
     },
     username,
   )
+
+  // Link shared items locally so they appear in delete/status
+  if (copied > 0) {
+    const results = await linkAllFromStore(storePath)
+    ui.blank()
+    for (const { name, result } of results) {
+      if (result.type === 'linked') {
+        ui.success(name)
+      } else if (result.type === 'backed-up') {
+        ui.warn(`${name}  ${style.dim('backed up to .backup/')}`)
+      }
+    }
+  }
 
   // Share the join command
   const joinCmd = `bunx skillsync join ${repoSlug}`

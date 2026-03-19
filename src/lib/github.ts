@@ -8,6 +8,7 @@ export type InviteResult = 'invited' | 'already-member' | 'error'
 
 export type CreateRepoResult = {
   slug: string
+  url: string
 }
 
 export type GhAuthAccount = {
@@ -97,7 +98,7 @@ export function createRepo(
   const repoArg = org ? `${org}/${name}` : name
   const visibilityFlag = visibility === 'public' ? '--public' : '--private'
   const result = Bun.spawnSync(
-    ['gh', 'repo', 'create', repoArg, visibilityFlag, '--add-readme'],
+    ['gh', 'repo', 'create', repoArg, visibilityFlag],
     { stdout: 'pipe', stderr: 'pipe' },
   )
 
@@ -110,8 +111,9 @@ export function createRepo(
   const output = result.stdout.toString().trim()
   const urlMatch = output.match(/github\.com\/([^/]+\/[^/\s]+)/)
   const slug = urlMatch ? urlMatch[1]! : repoArg
+  const url = output.startsWith('http') ? output : `https://github.com/${slug}`
 
-  return { slug }
+  return { slug, url }
 }
 
 export function getGhVersion(): string {

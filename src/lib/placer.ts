@@ -1,7 +1,8 @@
 import { lstat, readlink, symlink, mkdir, rename, unlink, readdir } from 'fs/promises'
 import type { Dirent } from 'fs'
 import { homedir } from 'os'
-import { join, dirname, basename, isAbsolute } from 'path'
+import { join, dirname, basename, isAbsolute, resolve } from 'path'
+import { fatal } from './errors'
 
 export type LinkedItem = {
   name: string
@@ -21,6 +22,16 @@ export type LinkResultEntry = {
 }
 
 export const storeRoot = join(homedir(), '.skillsync', 'store') + '/'
+
+export function assertSafeStorePath(storePath: string): void {
+  const resolved = resolve(storePath)
+  if (!resolved.startsWith(storeRoot.slice(0, -1))) {
+    fatal(
+      'Refusing to delete: store path is outside ~/.skillsync/store/',
+      `Path "${storePath}" does not resolve to the expected store root.`,
+    )
+  }
+}
 
 function resolveLink(raw: string, context: string): string {
   return isAbsolute(raw) ? raw : join(dirname(context), raw)
