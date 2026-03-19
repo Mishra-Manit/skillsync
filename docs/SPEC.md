@@ -6,24 +6,35 @@
 
 ## Problem
 
-When you work with Claude Code, you build skills (`.claude/skills/`) and subagents (`.claude/agents/`) that encode your workflows, conventions, and automation. Right now there is no way to share those markdown files with teammates and keep everyone on the same version. People either copy-paste files manually, forget to update, or just keep their best agents to themselves.
+When you work with Claude Code, you build skills (`~/.claude/skills/`) and agents (`~/.claude/agents/`) that encode your workflows, conventions, and automation. Without a shared system, teams end up copying files manually, drifting out of sync, or keeping their best workflows trapped on one machine.
 
-skillsync solves this with a single install-once CLI. Team leads create a shared skills repo, invite teammates, optionally seed it with existing skills — and everyone stays synced automatically via git.
+`skillsync` solves that with a Bun-based CLI that uses GitHub repos as the shared source of truth. A team lead can create a repo, seed it with selected local skills and agents, invite teammates, and each teammate can join that repo and link its contents into Claude Code through symlinks.
 
 ---
 
 ## Prerequisites
 
 - **Bun 1+** — required to run the CLI
-- **gh CLI** — **hard requirement**. Must be installed and authenticated (`gh auth login`) before any skillsync command will run. Used for repo creation, collaborator invites, and cloning private repos. Install at https://cli.github.com. skillsync performs this check at startup and exits immediately with a clear error and install instructions if the requirement is not met — there is no fallback mode.
+- **GitHub CLI (`gh`)** — **hard requirement**
+  - Must be installed
+  - Must be authenticated with `gh auth login`
+  - Used for auth detection, repo creation, cloning, collaborator invites, and optional repo deletion
+
+If `gh` is missing or unauthenticated, commands exit immediately with a clear error.
+
+---
 
 ## What It Does
 
-- **Creates** a private GitHub repo to hold shared team skills and agents
-- **Invites** teammates by email/username (via GitHub collaborator API or org membership)
-- **Imports** existing local skills the lead wants to share, letting them pick from a list
-- **Links** the shared skills into each developer's tool directories via symlinks
-- **Syncs** on demand (and optionally in the background) via git pull/push
+- **Creates** a GitHub repo for shared team skills and agents
+- **Invites** teammates by GitHub username
+- **Discovers** local Claude Code skills and agents
+- **Copies** selected items into the shared repo
+- **Clones** joined repos into `~/.skillsync/store/<owner>/<repo>/`
+- **Links** shared items into `~/.claude/skills/` and `~/.claude/agents/`
+- **Backs up** conflicting local items before linking
+- **Tracks** joined repos in local machine config
+- **Removes** linked items safely with `delete`, `leave`, and `destroy`
 
 ---
 
@@ -31,18 +42,16 @@ skillsync solves this with a single install-once CLI. Team leads create a shared
 
 | Layer | Choice | Reason |
 |-------|--------|--------|
-| Language | TypeScript | Team already knows JS/TS; target users have Bun |
-| Runtime | Bun 1+ | Fast, modern JS runtime; bunx provides zero-install distribution |
-| CLI framework | @crustjs/core | Command routing with chainable, type-safe builder API |
-| Interactive UI | @crustjs/prompts | Input, confirm, select, multiselect, spinner — zero deps |
-| Terminal style | @crustjs/style | Color and text formatting |
-| Config persistence | @crustjs/store | JSON-backed, typed config with atomic writes |
-| Validation | @crustjs/validate | Schema-first validation wrapping Zod 4 |
-| Git operations | simple-git | Bun-compatible git wrapper; no shell-out needed |
-| Frontmatter parsing | gray-matter | YAML frontmatter from SKILL.md files |
-| Merge algorithm | diff-match-patch | Google's text merging for skill body conflicts |
-| Filesystem watching | chokidar | Cross-platform file watcher for auto-sync |
-| Distribution | npm / bunx | Zero-install: `bunx skillsync join org/repo` just works |
+| Language | TypeScript | Clear, maintainable CLI code |
+| Runtime | Bun | Fast runtime and easy `bunx` distribution |
+| CLI framework | `@crustjs/core` | Command routing and command definitions |
+| Plugins | `@crustjs/plugins` | Help, version, autocomplete |
+| Interactive UI | `@crustjs/prompts` | Input, confirm, select, multiselect, spinner |
+| Terminal styling | `@crustjs/style` | Styled stderr output |
+| Config persistence | `@crustjs/store` | Persistent local config under `~/.skillsync/` |
+| Validation | `zod` | External data validation when needed |
+| GitHub integration | `gh` CLI | Auth, clone, create, invite, delete |
+| Git integration | `git` CLI | Init, add, commit, push |
 
 ---
 
@@ -50,73 +59,71 @@ skillsync solves this with a single install-once CLI. Team leads create a shared
 
 ### Pre-flight Check
 
-Runs automatically before **every** command (including `--help`-adjacent commands). This is the very first thing the CLI does.
+Every real command starts by checking GitHub CLI availability and auth through `detectGh()` in `src/lib/github.ts`.
 
 Flow:
-1. Check that `gh` is available in `PATH` by running `gh --version`. If not found, print a styled error:
-   ```
-   ✗ gh CLI is not installed.
-     Install it from https://cli.github.com, then run `gh auth login`.
-   ```
-   Exit with code 1.
-2. Check that `gh` is authenticated by running `gh auth status`. If unauthenticated, print:
-   ```
-   ✗ gh CLI is installed but you are not logged in.
-     Run `gh auth login` to authenticate, then retry.
-   ```
-   Exit with code 1.
-3. On success, capture the authenticated GitHub username from `gh auth status` output and make it available to all commands for the rest of the session.
 
-This check is implemented once in `src/lib/github.ts` (`detectGh()`) and called as the first statement in every command handler.
+1. Run `gh --version`
+2. Run `gh auth status`
+3. Extract the authenticated GitHub username
+4. Exit with a styled error if either check fails
+
+This is the guardrail that keeps the rest of the CLI simple.
 
 ---
 
 ### `skillsync create`
 
-Used by the **team lead** to initialize a shared skills repo.
+Used by a team lead to create a new shared repo.
 
-Flow:
-1. Run pre-flight check (gh installed + authenticated) — exit immediately if it fails
-2. Prompt: team name (becomes the GitHub repo name)
-3. Prompt: GitHub org (optional — uses personal account if blank)
-4. Create the private GitHub repo automatically via `gh repo create`
-5. Seed the repo with a starter `skills/` and `agents/` directory structure, plus an example SKILL.md
-6. Prompt: invite teammates (comma-separated emails or GitHub usernames)
-   - Uses `gh` CLI to send collaborator invites
-   - Org repos support email invites; personal repos require GitHub usernames
-7. Prompt: import existing skills (see Import Flow below)
-8. Commit + push everything
-9. Print the `join` command for the lead to share with teammates
+Current flow:
+
+1. Run GitHub pre-flight check
+2. Prompt for team name
+3. Prompt for optional GitHub org
+4. Prompt for repo visibility (`private` or `public`)
+5. Create the GitHub repo
+6. Initialize a local git repo in `~/.skillsync/store/<owner>/<repo>/`
+7. Add `origin`
+8. Seed the repo with:
+   - `skills/`
+   - `agents/`
+   - `README.md`
+9. Prompt for teammate GitHub usernames to invite
+10. Discover local Claude skills and agents
+11. Let the user choose which items to share
+12. Copy selected items into the repo
+13. Commit and push
+14. Save the repo in local config
+15. Link shared items locally
+16. Print the `join` command to share with teammates
+
+Notes:
+
+- The repo is seeded from code, not from a repo manifest file
+- Shared item selection defaults to nothing selected
+- Invites support GitHub usernames only
+
+Example:
 
 ```
 $ bunx skillsync create
 
   skillsync create
+  Authenticated as @alice
 
   Team name: acme-skills
-  GitHub org (blank for personal): acme
+  GitHub org (blank for personal account): acme
   Visibility: private
 
-  Created github.com/acme/acme-skills
-
-  Invite teammates (emails or usernames, comma-separated):
-  > alice@company.com, bob, charlie@company.com
-
-  Invited alice@company.com
-  Invited bob
-  Invited charlie@company.com
-
   Found 7 skills and 2 agents on your machine.
-  Which skills should the team have access to?
-  > [x] code-review      Review PRs for style and bugs
-    [x] deploy-prod      Production deployment checklist
-    [ ] my-voice         Personal writing style guide
-    [x] api-conventions  Internal API response shape
+  Select items to share with the team
+  > [x] code-review
+    [x] deploy-prod
+    [ ] my-private-helper
+    [x] planner (agent)
 
-  Importing 3 skills into acme/acme-skills...
-  Committed and pushed.
-
-  Share this with your team:
+  Share this command with your team:
 
     bunx skillsync join acme/acme-skills
 ```
@@ -125,302 +132,482 @@ $ bunx skillsync create
 
 ### `skillsync join <owner/repo>`
 
-Used by **each teammate** after accepting the GitHub invite. Can be run multiple times with different repos — each one is tracked independently.
+Used by a teammate to join a shared repo.
 
-Flow:
-1. Validate `<owner/repo>` format with `@crustjs/validate`
-2. Check `config.repos` — if the slug already exists, ask the user if they want to re-clone (default: no); if they decline, exit cleanly
-3. Clone the team repo to `~/.skillsync/store/<owner>/<repo>/` (namespaced so multiple repos coexist without collision)
-4. Read and validate `skillsync.json` from the cloned repo
-5. Add an entry to `config.repos` keyed by repo slug — never overwrites unrelated existing repo entries
-6. For each skill/agent in the store, create a symlink in the appropriate local tool directories
-7. Handle conflicts: if the user already has a local skill with the same name, back it up to `~/.claude/skills/.backup/<name>/` before creating the symlink
-8. Report what was linked and what was backed up
+Current flow:
+
+1. Run GitHub pre-flight check
+2. Validate `<owner/repo>` format
+3. Compute local store path as `~/.skillsync/store/<owner>/<repo>/`
+4. If already joined, ask whether to re-clone
+5. Clone the repo with `gh repo clone`
+6. Save the repo in local config
+7. Link everything found under:
+   - `<storePath>/skills/`
+   - `<storePath>/agents/`
+8. Report linked, backed-up, and skipped items
+
+Important behavior:
+
+- No `skillsync.json` or repo manifest is read
+- Repo metadata is inferred from the repo slug and local config
+- If a real local item already exists, it is moved into `.backup/` before linking
+- If another joined repo already owns the target symlink name, the new item is skipped
+
+Example:
 
 ```
 $ bunx skillsync join acme/acme-skills
 
-  Joining acme-skills...
+  skillsync join
+  Authenticated as @alice
 
-  Cloned acme/acme-skills → ~/.skillsync/store/acme/acme-skills/ (3 skills, 1 agent)
+  Cloning acme/acme-skills...
 
-  Linking to Claude Code...
-    code-review       linked
-    deploy-prod       linked
-    api-conventions   linked
-    planner           backed up your local version to .backup/
+  + code-review
+  + deploy-prod
+  ! planner backed up to .backup/
 
-  Done. Skills are active in Claude Code.
-  Run `skillsync sync` to pull updates.
-
-$ bunx skillsync join personal/my-skills
-
-  Joining my-skills...
-
-  Cloned personal/my-skills → ~/.skillsync/store/personal/my-skills/ (2 skills, 0 agents)
-
-  Linking to Claude Code...
-    sql-guide         linked
-    refactor-helper   linked
-
-  Done. You now have 2 repos joined. Run `skillsync status` to see all.
+  Joined acme/acme-skills -- 2 linked, 1 backed up, 0 skipped
 ```
 
 ---
 
 ### `skillsync delete [name]`
 
-Used by any teammate to remove linked team skills/agents from their local tool directories.
+Used to remove linked skills or agents from local Claude directories without touching the shared repo.
 
-Important behavior:
-- This is a **local uninstall** command. It does **not** delete files from the team GitHub repo.
-- It only removes symlinks owned by skillsync (targets under `~/.skillsync/store/`).
-- If a non-symlink file/directory exists at the target path, it is never deleted.
+Current behavior:
 
-**Selection behavior:**
-- `skillsync delete <name>` → deletes one item by exact name
-- `skillsync delete` (no name) → opens a multiselect of linked skills/agents (none selected by default)
-- `--repo <owner/repo>` → only show/delete items linked from that repo
-- `--type skill|agent` → filter selection list
-- `--all` → remove all linked items in scope (still requires confirmation)
+- This is a **local unlink** command
+- It only removes symlinks owned by `skillsync`
+- It never deletes the source content in `~/.skillsync/store/`
+- It can optionally restore a backed-up local item automatically if one exists
 
-**Backup restore behavior:**
-- If `~/.claude/skills/.backup/<name>/` or `~/.claude/agents/.backup/<name>.md` exists, prompt whether to restore it after unlinking
-- If declined, backup remains untouched
+Selection behavior:
+
+- `skillsync delete <name>` — remove matching linked item(s) by name
+- `skillsync delete` — open a multiselect prompt
+- `--repo <owner/repo>` — limit scope to one joined repo
+- `--all` — remove everything in scope without multiselect
+
+Current implementation details:
+
+- There is **no** `--type` flag
+- If a backup exists, it is restored automatically after unlinking
+- Items are selected from currently linked symlinks, not from repo contents
+
+Example:
 
 ```
-$ skillsync delete code-review --repo acme/acme-skills
-
-  Removing 1 linked item from acme/acme-skills...
-  ✓ unlinked code-review
-  Restored previous local backup: ~/.claude/skills/code-review
-
 $ skillsync delete --repo acme/acme-skills
 
-  Which linked items should be removed?
-  > [ ] code-review (skill)
-    [x] deploy-prod (skill)
-    [x] planner.md (agent)
+  skillsync delete
 
-  Remove 2 items from local Claude directories? (y/N)
-  ✓ unlinked deploy-prod
-  ✓ unlinked planner.md
+  Select items to remove
+  > [ ] code-review
+    [x] deploy-prod
+    [x] planner.md
+
+  Remove 2 items? (y/N)
+
+  + deploy-prod
+  + planner.md  backup restored
+
+  2 removed, 1 backup restored
 ```
 
 ---
 
 ### `skillsync sync`
 
-One-shot manual sync. Commits any local edits to team skills, pulls remote changes, and resolves conflicts.
+Pulls remote changes and pushes local changes for joined repos.
 
-**Multi-repo behavior:**
-- No flag → if one repo is joined, syncs it automatically; if multiple repos are joined, syncs **all** of them in sequence
-- `--repo <owner/repo>` → syncs only the specified repo; exits with a styled error if the slug is not in `config.repos`
+Accepts `--repo <owner/repo>` to target a single repo. Without the flag, syncs all joined repos sequentially.
+
+Flow per repo:
+
+1. If the local store has uncommitted changes, commit them with a `[skillsync] @username updated <skill-name>` message
+2. Fetch and pull with rebase from origin
+3. Push if there were local or remote changes
+4. Update `lastSync` in config
+
+On conflict: the rebase is aborted automatically, and the user is shown clear instructions for manual resolution.
+
+Example:
 
 ```
 $ skillsync sync
 
-  Syncing acme/acme-skills...
-  Committed local changes to code-review
-  Pulled 1 update (deploy-prod updated by @alice)
-  ✓ acme/acme-skills up to date
+  skillsync sync
+  Authenticated as @alice
 
-  Syncing personal/my-skills...
-  Nothing to commit.
-  ✓ personal/my-skills up to date
-
-$ skillsync sync --repo acme/acme-skills
-
-  Syncing acme/acme-skills...
-  Committed local changes to code-review
-  ✓ acme/acme-skills up to date
+  + acme/acme-skills  synced
+  - personal/my-skills  up to date
 ```
 
----
+```
+$ skillsync sync --repo acme/acme-skills
 
-### `skillsync daemon start|stop|status`
+  skillsync sync
+  Authenticated as @alice
 
-Runs `skillsync sync` automatically in the background.
-
-- Triggers on filesystem change to any linked skill file (via chokidar), debounced 2 seconds
-- Also polls every 60 seconds for remote changes
-- Logs sync events to `~/.skillsync/daemon.log`
-- Runs as a detached Bun process, PID stored at `~/.skillsync/daemon.pid`
-
-Note: daemon is optional. The core value works with manual `sync`. Auto-sync can be enabled later.
+  + acme/acme-skills  synced
+```
 
 ---
 
 ### `skillsync status`
 
-Shows current state for all joined repos: repo URLs, linked skills and agents per repo, and last sync timestamps. Read-only — never modifies anything.
+Shows the current local state across all joined repos.
+
+Current behavior:
+
+- Runs GitHub pre-flight check
+- Reads config from `~/.skillsync/`
+- Lists joined repos
+- Groups linked items by repo based on symlink targets under the store
+- Shows:
+  - team name
+  - store path
+  - last sync time
+  - linked skills
+  - linked agents
+- Warns if a repo's local store directory is missing
+- Warns about orphaned links that point into the store but do not match any joined repo in config
+
+Example:
 
 ```
 $ skillsync status
 
+  skillsync status
   GitHub user: @alice
   2 repos joined:
 
   acme/acme-skills
     Team:      acme-skills
-    Store:     ~/.skillsync/store/acme/acme-skills/
-    Last sync: 4 minutes ago
-    Skills (3): code-review, deploy-prod, api-conventions
-    Agents (1): planner
+    Store:     ~/.skillsync/store/acme/acme-skills
+    Last sync: never
+    Skills (2): code-review, deploy-prod
+    Agents (1): planner.md
 
   personal/my-skills
     Team:      my-skills
-    Store:     ~/.skillsync/store/personal/my-skills/
+    Store:     ~/.skillsync/store/personal/my-skills
     Last sync: never
-    Skills (2): sql-guide, refactor-helper
-    Agents (0): —
-
-$ skillsync status  # when no repos are joined
-
-  Not initialized. Run `skillsync join <owner/repo>` or `skillsync create` to get started.
-```
-
----
-
-### `skillsync check-git`
-
-Diagnostic command. Runs the pre-flight `detectGh()` check and displays all information gathered from the `gh` CLI — version, authenticated user, host, auth method, protocol, token (masked), and token scopes. Useful for verifying that the `gh` CLI is correctly installed and authenticated before running other commands.
-
-Exits 1 with a styled error if `gh` is not installed or the user is not logged in (same behaviour as every other command).
-
-```
-$ skillsync check-git
-
-  gh CLI check
-
-  Version    2.62.0
-  User       @alice
-  Host       github.com
-  Auth       oauth_token
-  Protocol   https
-  Token      gho_***
-  Scopes     gist, read:org, repo, workflow
-
+    Skills (1): sql-guide
+    Agents (0): none
 ```
 
 ---
 
 ### `skillsync import <path>`
 
-Adds a skill from the local machine into a shared team repo after initial setup.
+Adds a local skill directory or agent markdown file into one joined repo.
 
-**Repo selection:**
-- No flag → if one repo is joined, uses it automatically; if multiple repos are joined, presents a `select` prompt
-- `--repo <owner/repo>` → targets the specified repo directly; exits with a styled error if the slug is not in `config.repos`
+Current flow:
+
+1. Run GitHub pre-flight check
+2. Resolve the source path
+3. Detect whether it is:
+   - a skill directory
+   - an agent `.md` file
+4. Read local config
+5. Resolve the target repo
+   - use `--repo <owner/repo>` if provided
+   - auto-pick if one repo is joined
+   - otherwise prompt
+6. Copy the item into:
+   - `<storePath>/skills/<name>/`
+   - or `<storePath>/agents/<name>.md`
+7. Link it locally into Claude
+8. Commit and push
+9. Print result summary
+
+Important behavior:
+
+- Existing items in the target repo are not overwritten
+- Name is derived from frontmatter when possible, otherwise from the filename/directory name
+- Local linking follows the same backup/collision rules as `join`
+
+Example:
 
 ```
-$ skillsync import ~/.claude/skills/sql-migrations
+$ skillsync import ~/.claude/skills/sql-migrations --repo acme/acme-skills
 
-  # single repo joined — no prompt needed
-  Copied sql-migrations into acme/acme-skills/skills/
+  skillsync import
+  Authenticated as @alice
+
+  + sql-migrations copied into acme/acme-skills/skills/
+  + Symlink created
+
   Committed and pushed.
-  Symlink updated locally.
-
-$ skillsync import ~/.claude/skills/sql-migrations
-
-  # multiple repos joined — prompts for target
-  Which repo should this skill be added to?
-  > acme/acme-skills
-    personal/my-skills
-
-  Copied sql-migrations into acme/acme-skills/skills/
-  Committed and pushed.
-  Symlink updated locally.
-
-$ skillsync import ~/.claude/skills/sql-migrations --repo personal/my-skills
-
-  Copied sql-migrations into personal/my-skills/skills/
-  Committed and pushed.
-  Symlink updated locally.
 ```
 
 ---
 
-## Import Flow (Detail)
+### `skillsync check-git`
 
-When the lead runs `create`, after the repo is seeded, the CLI scans these directories:
+Diagnostic command for inspecting `gh` setup.
+
+Displays:
+
+- GitHub CLI version
+- authenticated user
+- host
+- auth method
+- git protocol
+- token preview
+- token scopes
+
+Example:
 
 ```
-~/.claude/skills/
-~/.claude/agents/
+$ skillsync check-git
+
+  skillsync check-git
+
+  Version       2.62.0
+  User          @alice
+  Host          github.com
+  Auth          oauth_token
+  Protocol      https
+  Token         gho_xxxx...
+  Scopes        gist, read:org, repo
 ```
 
-For each skill directory found, it reads the SKILL.md frontmatter (`name`, `description`) to display a meaningful label. Duplicate names across tool directories are deduplicated (Claude's copy wins).
+---
 
-The multiselect prompt lists all discovered skills with name and description. **Nothing is selected by default** — the user opts in explicitly to avoid accidentally sharing personal skills.
+### `skillsync leave [repo]`
 
-Selected skills are copied (not moved) into the team repo. Originals stay untouched. On the next `sync`, the local copies are replaced with symlinks pointing to the store.
+Removes a joined repo from the local machine.
+
+Current flow:
+
+1. Run GitHub pre-flight check
+2. Resolve the repo argument or prompt if needed
+3. Confirm
+4. Unlink all items owned by that repo
+5. Delete the repo's store directory
+6. Remove the repo from local config
+
+Important behavior:
+
+- `leave` does **not** restore backups
+- It only unlinks current symlinks and removes the local store
+- Use `destroy` if you want backup restoration
+
+Example:
+
+```
+$ skillsync leave acme/acme-skills
+
+  skillsync leave
+
+  Leave acme/acme-skills? Removes all linked items and deletes the local store. (y/N)
+
+  + Left acme/acme-skills -- 3 items unlinked, store deleted
+```
+
+---
+
+### `skillsync destroy [repo]`
+
+Fully tears down a joined repo from the local machine, with backup restoration.
+
+Current flow:
+
+1. Run GitHub pre-flight check
+2. Resolve the repo argument or prompt if needed
+3. Confirm
+4. Unlink all items owned by that repo
+5. Restore backups when present
+6. Delete the repo's store directory
+7. Remove the repo from local config
+8. Optionally delete the GitHub repo with `gh repo delete`
+
+Important behavior:
+
+- `destroy` is stronger than `leave`
+- Backed-up local items are restored automatically
+- GitHub repo deletion is optional and prompted separately
+
+Example:
+
+```
+$ skillsync destroy acme/acme-skills
+
+  skillsync destroy
+
+  Destroy acme/acme-skills? Symlinks removed, backups restored, local store deleted. (y/N)
+
+  + planner  backup restored
+  + code-review  unlinked
+
+  Also delete acme/acme-skills on GitHub? (y/N)
+
+  2 items removed, 1 backup restored, store deleted
+```
+
+---
+
+### `skillsync daemon start|stop|status`
+
+Manages a background sync daemon that keeps skills synced automatically.
+
+**`daemon start`**
+- Spawns a detached background process that watches `~/.skillsync/store/` for file changes
+- Local edits trigger a debounced sync (2s) per repo
+- A 60-second poll loop checks for remote changes from teammates
+- Writes PID to `~/.skillsync/daemon.pid` and logs to `~/.skillsync/daemon.log`
+- If already running, prints a warning
+
+**`daemon stop`**
+- Sends SIGTERM to the daemon process
+- Cleans up PID file
+- If not running, prints info message
+
+**`daemon status`**
+- Shows whether the daemon is running, its PID, uptime, log path, and last sync time per repo
+- Cleans up stale PID files automatically
+
+**Auto-start**: The daemon is silently started after `join` and `create` commands so users never need to think about it.
+
+Example:
+
+```
+$ skillsync daemon start
+
+  skillsync daemon start
+  + Daemon started (pid 12345).
+    Log: ~/.skillsync/daemon.log
+
+$ skillsync daemon status
+
+  skillsync daemon status
+  + Daemon is running.
+    PID           12345
+    Log           ~/.skillsync/daemon.log
+    Uptime        2h 15m
+    acme/acme-skills  2026-03-18T14:30:00.000Z
+
+$ skillsync daemon stop
+
+  skillsync daemon stop
+  + Daemon stopped.
+```
+
+---
+
+## Import Flow
+
+During `create`, the CLI scans:
+
+- `~/.claude/skills/`
+- `~/.claude/agents/`
+
+Discovery behavior:
+
+- Skills are directories
+- Agents are `.md` files
+- Hidden items are ignored
+- Already-managed symlinks are ignored
+- For skills, `SKILL.md` frontmatter is read when present
+- For agents, markdown frontmatter is read when present
+- Labels use `name` and `description` when available
+- Selection defaults to nothing selected
+
+Selected items are copied into the team repo. Originals remain untouched.
 
 ---
 
 ## Placement Layer
 
-Each joined repo is cloned into a namespaced subdirectory of `~/.skillsync/store/`. Multiple team repos coexist without any path collision. Skills are symlinked from the relevant store subdirectory into tool directories:
+Each joined repo is cloned into its own namespaced store directory:
 
 ```
 ~/.skillsync/store/
   acme/
-    acme-skills/              ← clone of github.com/acme/acme-skills
+    acme-skills/
       skills/
         code-review/
           SKILL.md
-        deploy-prod/
-          SKILL.md
-          scripts/
-            deploy.sh
       agents/
         planner.md
   personal/
-    my-skills/                ← clone of github.com/personal/my-skills
+    my-skills/
       skills/
         sql-guide/
           SKILL.md
-        refactor-helper/
-          SKILL.md
-      agents/
-
-Symlinked to:
-~/.claude/skills/code-review      -> ~/.skillsync/store/acme/acme-skills/skills/code-review
-~/.claude/skills/deploy-prod      -> ~/.skillsync/store/acme/acme-skills/skills/deploy-prod
-~/.claude/agents/planner.md       -> ~/.skillsync/store/acme/acme-skills/agents/planner.md
-~/.claude/skills/sql-guide        -> ~/.skillsync/store/personal/my-skills/skills/sql-guide
-~/.claude/skills/refactor-helper  -> ~/.skillsync/store/personal/my-skills/skills/refactor-helper
 ```
 
-`placer.ts` determines symlink ownership by checking whether the resolved target path falls anywhere under `~/.skillsync/store/` — it does not need to know which specific repo a symlink belongs to in order to safely manage it.
+Claude Code sees symlinks like:
 
-If the user has `codex` or `cursor` enabled in their config, those get symlinked too. The placer only manages its own symlinks — it will not clobber real directories.
+```
+~/.claude/skills/code-review -> ~/.skillsync/store/acme/acme-skills/skills/code-review
+~/.claude/agents/planner.md  -> ~/.skillsync/store/acme/acme-skills/agents/planner.md
+~/.claude/skills/sql-guide   -> ~/.skillsync/store/personal/my-skills/skills/sql-guide
+```
 
-**Conflict on join**: if a real (non-symlink) directory exists at the target, it is backed up to `~/.claude/skills/.backup/<name>/` before the symlink is created. The user is notified.
+Ownership model:
 
-**Name collisions across repos**: if two joined repos both contain a skill named `code-review`, the second `join` will detect the collision (the target symlink already exists and is owned), warn the user, and skip that skill — it does not overwrite. The user must rename one of the skills manually to resolve this.
+- A symlink is considered owned by `skillsync` if its resolved target lives under `~/.skillsync/store/`
+- The placer only removes symlinks it owns
+- Real files and directories are never deleted directly
 
-On non-symlink-friendly platforms, falls back to copy mode (`--copy` flag or config setting).
+Conflict behavior:
+
+- If a real file or directory already exists at the Claude target path, it is moved to `.backup/`
+- If a symlink already exists and points somewhere else, it is treated as a collision and skipped
+- If a symlink already points to the exact same store path, it is treated as already linked
+
+Current scope is Claude only. Multi-target placement is not part of the implemented behavior.
 
 ---
 
-## Sync Engine
+## Local Config
 
-For teams that edit skills frequently, auto-sync can run this loop:
+Local machine state is stored under `~/.skillsync/` through `@crustjs/store`.
 
-1. **Local change detected** (chokidar event, debounced 2s)
-2. Parse changed SKILL.md files
-3. Auto-commit: `[skillsync] @username updated code-review`
-4. `git pull --rebase`
-5. On conflict:
-   - **Frontmatter**: merge field-by-field (each key is independent). Last-write-wins on same-field conflicts with a logged warning.
-   - **Markdown body**: diff-match-patch three-way merge. Auto-merges additive changes. Creates `.sync-conflict` file on genuine conflicts.
-   - **Scripts/binaries**: last-modified-wins.
-6. Push to remote
+Logical config shape:
+
+```json
+{
+  "username": "alice",
+  "repos": {
+    "acme/acme-skills": {
+      "repo": "acme/acme-skills",
+      "team": "acme-skills",
+      "storePath": "/Users/alice/.skillsync/store/acme/acme-skills",
+      "linkedAt": "2026-03-19T12:00:00.000Z",
+      "lastSync": null
+    }
+  }
+}
+```
+
+Notes:
+
+- `repos` is keyed by repo slug
+- `team` is currently just the repo name
+- `lastSync` exists in config even though real sync is not implemented yet
+- There is no repo-level manifest file in the shared repo
 
 ---
 
 ## Repo Structure (Team Repo)
+
+Current repo shape created by `skillsync create`:
+
+```
+acme-skills/
+  skills/
+  agents/
+  README.md
+```
+
+After importing or sharing items, it may look like:
 
 ```
 acme-skills/
@@ -433,29 +620,16 @@ acme-skills/
         deploy.sh
   agents/
     planner.md
-  skillsync.json
   README.md
 ```
 
-### skillsync.json
+There is **no** `skillsync.json` file.
 
-```json
-{
-  "team": {
-    "name": "acme-skills",
-    "repo": "github.com/acme/acme-skills"
-  },
-  "sync": {
-    "interval": 60,
-    "strategy": "auto"
-  },
-  "targets": {
-    "claude": true,
-    "codex": false,
-    "cursor": false
-  }
-}
-```
+Repo metadata currently lives in:
+
+- the GitHub repo slug
+- the local machine config
+- the seeded `README.md`
 
 ---
 
@@ -465,48 +639,57 @@ acme-skills/
 skillsync/
   src/
     commands/
-      create.ts      # create team repo, invite, import
-      join.ts        # clone, link, handle conflicts
-      delete.ts      # remove linked local skills/agents safely
-      sync.ts        # one-shot manual sync
-      daemon.ts      # start/stop/status background watcher
-      status.ts      # show current state
-      import.ts      # add a skill post-setup
+      check-git.ts
+      create.ts
+      daemon.ts
+      delete.ts
+      destroy.ts
+      import.ts
+      join.ts
+      leave.ts
+      status.ts
+      sync.ts
     lib/
-      git.ts         # simple-git wrapper (clone, commit, pull, push)
-      watcher.ts     # chokidar watcher + poll loop
-      merger.ts      # gray-matter + diff-match-patch merge logic
-      placer.ts      # symlink/copy to target tool directories
-      discovery.ts   # scan local skill dirs, parse frontmatter
-      config.ts      # read/write ~/.skillsync/config.json via @crustjs/store
-      github.ts      # gh CLI detection, repo create, invite
-    index.ts         # @crustjs/core entrypoint — register subcommands
+      config.ts
+      discovery.ts
+      errors.ts
+      git.ts
+      github.ts
+      placer.ts
+      syncer.ts
+      ui.ts
+      watcher.ts
+    daemon-worker.ts
+    index.ts
+  docs/
+    SPEC.md
+    crustJS.md
   package.json
   tsconfig.json
-  SPEC.md
 ```
 
 ---
 
 ## Key Dependencies
 
+Current `package.json` dependencies are:
+
 ```json
 {
   "dependencies": {
     "@crustjs/core": "^0.0.15",
+    "@crustjs/plugins": "^0.0.19",
     "@crustjs/prompts": "^0.0.9",
-    "@crustjs/style": "^0.0.5",
     "@crustjs/store": "^0.0.4",
-    "@crustjs/validate": "^0.0.13",
-    "simple-git": "^3.27.0",
-    "gray-matter": "^4.0.3",
-    "diff-match-patch": "^1.0.5",
-    "chokidar": "^4.0.0"
+    "@crustjs/style": "^0.0.5",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
-    "typescript": "^5.0.0",
+    "@eslint/js": "^9.22.0",
     "@types/bun": "latest",
-    "@types/diff-match-patch": "^1.0.0"
+    "eslint": "^9.22.0",
+    "typescript": "^5.0.0",
+    "typescript-eslint": "^8.26.1"
   },
   "bin": {
     "skillsync": "./dist/index.js"
@@ -514,356 +697,90 @@ skillsync/
 }
 ```
 
+The implementation currently shells out to `gh` and `git` rather than using extra npm packages for git, merge, or file watching.
+
 ---
 
 ## Current Scope
 
-| Command/Feature | Status |
-|-----------------|--------|
-| `create` | Included — repo creation, invites, import flow |
-| `join` | Included — clone, symlink, conflict backup |
-| `delete` | Included — local unlink and optional backup restore |
-| `sync` | Included — manual one-shot |
-| `status` | Included — current state display |
-| `import` | Included — add a skill post-setup |
-| `check-git` | Included — gh setup diagnostics |
-| `destroy` | Included — full teardown with backup restore and optional GitHub deletion |
-| `daemon` | Included — background auto-sync via chokidar + 60s poll |
-| Merge conflict auto-resolution | Included — frontmatter-aware three-way merge via diff-match-patch |
-| Multi-target (codex, cursor) | Not in current implementation |
+| Command / Feature | Status |
+|-------------------|--------|
+| `create` | Implemented |
+| `join` | Implemented |
+| `delete` | Implemented |
+| `leave` | Implemented |
+| `destroy` | Implemented |
+| `import` | Implemented |
+| `status` | Implemented |
+| `check-git` | Implemented |
+| `sync` | Implemented |
+| `daemon start\|stop\|status` | Implemented |
+| Merge conflict resolution | Not implemented (fails loudly) |
+| Multi-target placement | Not implemented |
+| Repo manifest file | Removed |
 
-Current success metric: a team lead can go from `bunx skillsync create` to a teammate successfully running `bunx skillsync join` and having skills in Claude Code in under 60 seconds (excluding GitHub invite accept time).
+Current success metric:
 
----
-
-## Future Enhancements
-
-- Multi-target placement (codex, cursor)
-- `skillsync diff <skill>` — compare local backup to team version
-- Desktop notifications on sync failure
-- Project-level mode: `skillsync init --local` — skills live in the project repo, no separate repo needed
-- `skillsync add <url>` — pull a community skill from skills.sh or a GitHub URL into the team repo
-- Web dashboard for team skill activity
-- Claude Code plugin integration for auto-discovery
-- Skill visibility tags (`@private`, `@team`, `@public`) in frontmatter
+- A lead can create a repo
+- Share selected local Claude skills and agents
+- A teammate can join the repo
+- Shared items appear in Claude via symlinks
+- Local conflicts are backed up safely
 
 ---
 
 ## Design Decisions
 
-**Why git as the backend?** Zero infrastructure. Teams already have GitHub. Version history, blame, and PR review come free. No new auth to manage.
+**Why use GitHub repos as the backend?**  
+Teams already understand GitHub. It provides sharing, history, collaboration, and a natural source of truth without building a custom service.
 
-**Why `gh` CLI instead of Octokit?** The `gh` CLI handles auth, token management, and repo creation. Building OAuth from scratch is scope creep. `gh` is already installed on most developer machines.
+**Why require `gh` CLI?**  
+It keeps auth simple and leverages the user's existing GitHub session. The tool can create repos, clone them, inspect auth state, invite collaborators, and optionally delete repos without introducing a separate auth flow.
 
-**Why symlinks instead of copies?** Update the source once, all agents see the change instantly. Fall back to copies on platforms where symlinks are unreliable.
+**Why use symlinks?**  
+Symlinks let Claude read directly from the store copy. That keeps the team repo and local Claude install aligned without maintaining duplicate working copies.
 
-**Why CrustJS instead of Commander + Clack?** CrustJS provides an integrated, type-safe suite (@crustjs/core, @crustjs/prompts, @crustjs/store, @crustjs/validate) in a single framework. Fewer integration points, full TypeScript inference across commands and prompts, and the CrustJS team is actively supporting the project.
+**Why backup instead of overwrite?**  
+A local user may already have a personal skill or agent with the same name. Backing it up to `.backup/` makes the operation reversible and keeps ownership clear.
 
-**Why no custom sync server?** It would require accounts, hosting, auth, and ongoing ops. Git repos are free, familiar, and already trusted for code. The sync problem is just a git pull/push loop.
+**Why no repo manifest file?**  
+The current implementation does not need one. Repo identity comes from the GitHub slug and local config, and the shared repo structure is simple enough to infer directly from folders.
 
-**Why `bunx` distribution?** Zero install friction for Bun users. The target user (`bunx skillsync join org/repo`) never needs to install skillsync globally. Works immediately after receiving the join command from their team lead.
-
-**Why JSON for config?** `@crustjs/store` uses JSON natively with atomic writes and full type inference. No additional parser dependency needed, and JSON is universally readable by any tool in the ecosystem.
-
----
-
-## Implementation Plan
-
-> **Ordering rationale:** Each phase ends with something you can run and manually verify. Library code is built only as far as the next command needs it — no speculative work. `join` is built before `create` because it has far fewer dependencies (no GitHub API, no discovery), lets you validate the entire store → symlink → config pipeline against a manually-created test repo, and gives you confidence in the foundation before tackling the most complex command.
+**Why keep `sync` in the CLI if it is not finished?**  
+It preserves the intended command surface while the real sync engine is still being built.
 
 ---
 
-### Phase 1 — Scaffold
+## Implementation Notes
 
-**Goal:** `bun dist/index.js --help` prints all seven subcommands. Nothing else works yet.
+### What is implemented now
 
-- [ ] Initialize `package.json` (`name: skillsync`, `type: module`), `tsconfig.json` (`strict: true`, `outDir: dist/`), `.gitignore`
-- [ ] Install core dependencies: `@crustjs/core`, `@crustjs/prompts`, `@crustjs/style`, `@crustjs/store`, `@crustjs/validate`, `simple-git`, `gray-matter`
-- [ ] Add `bun run build`, `bun run dev` (watch), `bun run typecheck`, `bun run lint` scripts
-- [ ] Create `src/index.ts` — register `create`, `join`, `delete`, `sync`, `status`, `import`, `check-git` as stub handlers that just print `"not implemented"` via `@crustjs/style`
-- [ ] Add `bin.skillsync` field to `package.json` pointing to `dist/index.js`
+- GitHub auth detection
+- Repo creation
+- Repo cloning
+- Local config persistence
+- Skill and agent discovery
+- Importing local content into a joined repo
+- Symlink management with ownership detection
+- Backup and restore flows
+- Repo leave and destroy workflows
+- Read-only status reporting
+- Pull/rebase/push sync orchestration
+- Background daemon with file watching and polling
+- Auto-start daemon after join and create
 
-**Smoke test:** `bun run build && bun dist/index.js --help` lists all seven commands. `bun run typecheck` passes with zero errors.
+### What is intentionally not implemented yet
 
----
-
-### Phase 2 — Universal Foundations: `config.ts` + `detectGh()`
-
-**Goal:** Every command can read/write local config and will exit cleanly if `gh` is missing. These two modules underpin everything else — build them once, never revisit.
-
-**`src/lib/config.ts`**
-- [ ] Define `RepoConfig` type: `{ repo: string, team: string, storePath: string, linkedAt: string, lastSync: string | null }` — one entry per joined repo; `storePath` is the absolute local clone path (e.g. `~/.skillsync/store/acme/acme-skills`)
-- [ ] Define `Config` type: `{ username: string, repos: Record<string, RepoConfig> }` — `repos` is keyed by repo slug `"owner/repo"`
-- [ ] Define `@crustjs/store` schema and initialize the store at `~/.skillsync/`
-- [ ] `readConfig()` — return typed `Config` or `null` if the store filew does not exist
-- [ ] `writeConfig(config: Config)` — atomic write via store; creates `~/.skillsync/` if needed
-- [ ] `addRepo(entry: RepoConfig)` — read current config (or create a fresh empty one), merge the new entry into `config.repos` keyed by `entry.repo`, then call `writeConfig()`; never modifies any other existing repo entry
-- [ ] `removeRepo(slug: string)` — remove the entry at `config.repos[slug]` and call `writeConfig()`; no-op if the slug is not present
-- [ ] `resolveRepo(config: Config, flag?: string): RepoConfig` — helper for commands that act on exactly one repo (e.g. `import`): if `flag` is set, look up `config.repos[flag]` and error with a styled message if not found; if `config.repos` has exactly one entry, return it automatically; otherwise throw a `NeedsRepoSelectError` that the calling command catches to show a `select` prompt before retrying
-- [ ] `resolveSyncRepos(config: Config, flag?: string): RepoConfig[]` — helper for `sync`: if `flag` is set, return `[config.repos[flag]]` (styled error if missing); if no flag is set, return all joined repos; if none are joined, print a styled error and exit
-
-**`src/lib/github.ts`** (pre-flight only — GitHub API calls come in Phase 6)
-- [ ] `detectGh()` — run `gh --version` (confirms in PATH), then `gh auth status` (confirms login); parse authenticated username from output; return `{ username: string }` on success; on any failure print a styled two-line error (what went wrong + how to fix it) and `process.exit(1)`
-
-- [ ] Drop `detectGh()` as the first call into every command stub from Phase 1
-
-**Smoke test:** With `gh` logged out, running `bun dist/index.js join foo/bar` prints a styled error and exits 1. Logged back in, it prints `"not implemented"`.
+- Automatic conflict resolution (conflicts abort rebase, user resolves manually)
+- Multi-target installation for non-Claude tools
 
 ---
 
-### Phase 3 — `skillsync join` (first fully working command)
+## Near-Term Direction
 
-**Goal:** A teammate can point `join` at any real GitHub repo and get symlinks wired up in `~/.claude/skills/`. Create a throwaway test repo manually on GitHub to drive this.
+Possible next steps:
 
-**`src/lib/git.ts`** (clone only — push/pull/commit come in Phase 4)
-- [ ] `cloneRepo(repoSlug, destPath)` — shells out to `gh repo clone <slug> <destPath>`; returns a `SimpleGit` instance bound to `destPath`
-
-**`src/lib/placer.ts`** (full module — needed by `join`, `import`, and `status`)
-- [ ] `isOwnedSymlink(targetPath)` — returns `true` if path is a symlink pointing into `~/.skillsync/store/`
-- [ ] `linkSkill(storePath, targetPath)` — create symlink from `targetPath` → `storePath`; if a real directory already occupies `targetPath`, move it to `~/.claude/skills/.backup/<name>` and notify user before linking
-- [ ] `unlinkSkill(targetPath)` — remove symlink only if `isOwnedSymlink()` is true; never removes real directories
-- [ ] `listLinked()` — scan all known target directories, return every path where `isOwnedSymlink()` is true
-
-**`src/commands/join.ts`**
-- [ ] Call `detectGh()` — always first
-- [ ] Accept `<owner/repo>` as required argument; validate format with `@crustjs/validate`
-- [ ] Compute the namespaced clone destination: `~/.skillsync/store/<owner>/<repo>/` — derived directly from the slug argument
-- [ ] Check `readConfig()` — if the slug already exists in `config.repos`, prompt the user whether to re-clone (default: no); if they decline, exit cleanly with a styled message
-- [ ] Call `cloneRepo()` into the computed destination; show a spinner while cloning
-- [ ] Read and validate `skillsync.json` from the cloned repo with `@crustjs/validate`
-- [ ] Call `addRepo()` with a new `RepoConfig` entry — never overwrites entries for unrelated repos already in config
-- [ ] Enumerate `<storePath>/skills/` and `<storePath>/agents/`; for each entry call `linkSkill()` — if the target symlink already exists and `isOwnedSymlink()` returns true, skip it and warn the user (name collision with a skill from another joined repo)
-- [ ] Print per-item result (`linked` / `backed up` / `skipped — name collision`) and a final summary
-
-**Smoke test:** `bun dist/index.js join <your-test-repo>` clones the repo to `~/.skillsync/store/<owner>/<repo>/`, creates symlinks in `~/.claude/skills/`, and adds one entry to `config.repos` in `~/.skillsync/config.json`. Run `join` a second time with a different test repo — both entries appear side-by-side in config and all symlinks coexist without collision. Verify with `ls -la ~/.claude/skills/`.
-
----
-
-### Phase 3.5 — `skillsync delete` (safe local uninstall)
-
-**Goal:** A teammate can remove any linked skill/agent from local tool directories without risking accidental data loss or deleting shared team repo content.
-
-**`src/lib/placer.ts`** (extend existing module)
-- [ ] `listLinkedDetailed()` — return linked items with `{ name, type, targetPath, resolvedStorePath }` so commands can filter by repo slug and type
-- [ ] `restoreBackup(targetPath)` — if a matching `.backup/` entry exists, move it back into place; return `restored | missing`
-- [ ] Keep unlink safety invariant: only unlink paths where `isOwnedSymlink()` is true
-
-**`src/commands/delete.ts`**
-- [ ] Call `detectGh()` — always first
-- [ ] `readConfig()` — exit with a styled error if no repos are joined
-- [ ] Support `delete [name]` plus flags: `--repo <owner/repo>`, `--type skill|agent`, `--all`
-- [ ] Resolve repo scope with existing config helpers (`resolveRepo` when needed); with multiple repos and no `--repo`, allow all repos in scope
-- [ ] Build candidate list from `listLinkedDetailed()`; filter by `name`/`repo`/`type`; if no matches, print a styled "nothing to delete" message and exit 0
-- [ ] If `name` is omitted and `--all` is not set, show a multiselect prompt (nothing selected by default)
-- [ ] Show a confirmation prompt with exact count + names before deleting
-- [ ] For each selected item: `unlinkSkill(targetPath)`; if backup exists, prompt to restore (default: no) and call `restoreBackup()` when accepted
-- [ ] Print per-item result (`unlinked` / `restored backup` / `skipped`) and a final summary
-
-**`src/index.ts`**
-- [ ] Register `delete` command in the CLI command tree and help output
-
-**Smoke test:** Join two repos with at least 3 linked items total, run `skillsync delete --repo acme/acme-skills` and remove one skill + one agent, verify only owned symlinks are removed and `~/.skillsync/store/...` content remains unchanged. Re-run with `skillsync delete code-review` and verify exact-name deletion. Verify backup restore flow by deleting an item that has `.backup/` data and confirming restore.
-
----
-
-### Phase 4 — `skillsync sync`
-
-**Goal:** After editing a skill file in the store, `sync` commits and pushes it. Validates the git round-trip.
-
-**`src/lib/git.ts`** (complete the module)
-- [ ] `commitAll(repoPath, message)` — stage all changes (`git add -A`) and commit with the provided message
-- [ ] `pullRebase(repoPath)` — `git pull --rebase origin main`; on conflict throw a typed `SyncConflictError` with the conflicting file path
-- [ ] `push(repoPath)` — push to `origin main`
-- [ ] `sync(repoPath, username, changedSkillName?)` — orchestrate: `commitAll` (if dirty) → `pullRebase` → `push`; format commit message as `[skillsync] @<username> updated <skill-name>`
-
-**`src/commands/sync.ts`**
-- [ ] Call `detectGh()` — always first
-- [ ] `readConfig()` — exit with styled error if `null` or `config.repos` is empty (suggest `join` or `create`)
-- [ ] Determine target repos: if `--repo <slug>` flag is provided, look it up in `config.repos` and exit with a styled error if not found; otherwise collect **all** entries in `config.repos` and sync them sequentially
-- [ ] For each target repo: show a labeled spinner (`Syncing <slug>...`), call `git.sync(repoConfig.storePath, username)`; on success update `repoConfig.lastSync` to the current ISO timestamp via `addRepo()`
-- [ ] On `SyncConflictError`: print the repo slug and conflicting file path in red, instruct the user to open the file, resolve the conflict markers, and re-run `sync`; when syncing all repos continue to the next one rather than aborting entirely
-- [ ] On success: print a per-repo summary of what was pushed and what was pulled (diff HEAD before/after for each)
-
-**Smoke test:** Edit a skill file in `~/.skillsync/store/acme/acme-skills/skills/`, run `sync`, verify the commit appears on GitHub. Run `sync --repo acme/acme-skills` and verify only that repo is touched. With two repos joined, run `sync` with no flag and verify both repos are processed in sequence with individual result lines.
-
----
-
-### Phase 3.6 — `skillsync leave` (full repo teardown)
-
-**Goal:** A teammate can completely remove a joined repo from their machine in one command — all symlinks removed, store directory deleted, config entry cleared.
-
-**`src/lib/config.ts`** (already has `removeRepo` — no changes needed)
-
-**`src/commands/leave.ts`**
-- [ ] Call `detectGh()` — always first
-- [ ] `readConfig()` — exit with a styled error if no repos are joined
-- [ ] Accept `[repo]` as an optional argument (the `owner/repo` slug)
-- [ ] If omitted and one repo is joined, use it automatically; if multiple repos are joined and no arg is given, show a `select` prompt so the user picks one
-- [ ] Show a single confirmation: `Leave <repo>? This removes all linked skills/agents and deletes the local store.` (default: no)
-- [ ] Call `listLinkedDetailed()`, filter to the chosen repo, call `unlinkSkill()` on each
-- [ ] Delete the store directory with `rm -rf <storePath>`
-- [ ] Call `removeRepo(slug)` to clear the config entry
-- [ ] Print a short summary: items unlinked, store deleted, config updated
-
-**`src/index.ts`**
-- [ ] Register `leave` command
-
-**Smoke test:** Join a repo, verify symlinks exist, run `skillsync leave <repo>`, confirm that `~/.claude/skills/` and `~/.claude/agents/` no longer contain the repo's items, `~/.skillsync/store/<owner>/<repo>/` is gone, and the entry is absent from `config.json`. Run with no argument while two repos are joined — verify the select prompt appears.
-
----
-
-### Phase 6.5 — `skillsync destroy` (full teardown with backup restore)
-
-**Goal:** A user can completely remove a repo from their machine in one command — symlinks removed, original backed-up skills/agents restored to their proper places, local store deleted, config entry cleared, and optionally the GitHub repo deleted.
-
-**Difference from `leave`:** `leave` only removes symlinks. `destroy` also restores any `.backup/` originals that were displaced when the repo was created or joined.
-
-**`src/commands/destroy.ts`**
-- [x] Call `detectGh()` — always first
-- [x] `readConfig()` — exit with a styled error if no repos are joined
-- [x] Accept `[repo]` as an optional argument (the `owner/repo` slug)
-- [x] If omitted and one repo is joined, use it automatically; if multiple repos are joined and no arg is given, show a `select` prompt so the user picks one
-- [x] Show a single confirmation: `Destroy <repo>? Symlinks removed, backups restored, local store deleted.` (default: no)
-- [x] Call `listLinkedDetailed()`, filter to the chosen repo
-- [x] For each owned item: `unlinkSkill()`, then if `hasBackup()` is true call `restoreBackup()` and count it
-- [x] Delete the store directory with `rm -rf <storePath>`
-- [x] Call `removeRepo(slug)` to clear the config entry
-- [x] Ask: `Also delete <repo> on GitHub?` (default: no) — if yes, shell out to `gh repo delete <slug> --yes`; warn on failure
-- [x] Print summary: items removed, backups restored, store deleted, and GitHub status if applicable
-
-**`src/index.ts`**
-- [x] Register `destroy` command
-
-```
-$ skillsync destroy Mishra-Manit/haha-test
-
-  skillsync destroy
-  Destroy Mishra-Manit/haha-test? Symlinks removed, backups restored, local store deleted. (y/N) y
-
-  ✓ agent-browser  backup restored
-  ✓ branch  unlinked
-  ✓ plan  backup restored
-  ✓ brainstorming  backup restored
-
-  Also delete Mishra-Manit/haha-test on GitHub? (y/N) y
-  ✓ Mishra-Manit/haha-test  deleted from GitHub
-
-  4 items removed, 3 backups restored, store deleted
-```
-
-**Smoke test:** Run `skillsync create`, share some skills (causes backups), then run `skillsync destroy <repo>`. Verify that backed-up skills are restored to `~/.claude/skills/` or `~/.claude/agents/`, the store directory is gone, and the config entry is absent. Confirm the GitHub repo is deleted when the user accepts the prompt.
-
----
-
-### Phase 5 — `skillsync status`
-
-**Goal:** A quick read-only health check. All dependencies already exist — this phase should take under an hour.
-
-**`src/commands/status.ts`**
-- [ ] `readConfig()` — if `null` or `config.repos` is empty, print a "not initialized" state with the suggested next step and exit cleanly (exit code 0, not an error)
-- [ ] Print the authenticated GitHub username at the top, then iterate over every entry in `config.repos` and render one block per repo
-- [ ] Per-repo block: team name, store path, last sync timestamp (from `repoConfig.lastSync`, display as relative time or "never"), and linked skill/agent counts
-- [ ] Call `listLinked()` — group results by which `storePath` prefix the symlink resolves to, so skills are shown under the correct repo block
-- [ ] If a repo's `storePath` directory is missing or empty, print an inline warning that the repo may need to be re-cloned (`skillsync join <slug>`)
-
-**Smoke test:** Run `status` after joining two repos and syncing only one. Both repo blocks appear; the unsynced one shows "Last sync: never". Delete `~/.skillsync/config.json` and re-run — gets the "not initialized" message.
-
----
-
-### Phase 6 — `skillsync create`
-
-**Goal:** The team lead's full onboarding flow. This is the most complex command. Build it last among the commands so all git, placer, and config primitives are already proven.
-
-**`src/lib/github.ts`** (complete the module)
-- [ ] `createRepo(name, org?)` — `gh repo create <org/name> --private --clone` (personal if `org` is blank); returns the cloned local path
-- [ ] `inviteCollaborator(repoSlug, emailOrUsername)` — `gh api /repos/<slug>/collaborators/<user> -X PUT`; handle org repos (support email) vs personal repos (username only); return `'invited' | 'already-member' | 'error'` — never throw, let the caller handle per-invitee results
-
-**`src/lib/discovery.ts`**
-- [ ] `discoverLocalSkills()` — scan `~/.claude/skills/` and `~/.claude/agents/`
-- [ ] For each subdirectory, attempt to parse `SKILL.md` frontmatter with `gray-matter`; skip silently if missing
-- [ ] Deduplicate by `name` frontmatter field (first found wins)
-- [ ] Return `DiscoveredSkill[]`: `{ name, description, sourcePath, type: 'skill' | 'agent' }`
-
-**`src/commands/create.ts`**
-- [ ] Call `detectGh()` — always first
-- [ ] Prompt: team name — validate non-empty and URL-safe (`/^[a-z0-9-]+$/`) with `@crustjs/validate`
-- [ ] Prompt: GitHub org — optional; blank defaults to authenticated personal account
-- [ ] Show spinner: call `createRepo(name, org)` — repo is created and cloned into `~/.skillsync/store/<org-or-username>/<name>/` (same namespaced layout used by `join`)
-- [ ] Seed the repo: create `skills/` and `agents/` directories; write `skillsync.json` (from the schema); write a starter `skills/example/SKILL.md`; write `README.md` containing the `join` command
-- [ ] Prompt: invite teammates — comma-separated input; for each trimmed value call `inviteCollaborator()`, print per-invitee result
-- [ ] Call `discoverLocalSkills()` — if non-empty results, show multiselect (nothing checked by default); copy selected items into `store/skills/` or `store/agents/`
-- [ ] `commitAll` + `push` everything
-- [ ] Call `addRepo()` with a new `RepoConfig` entry (slug, team name, computed `storePath`, current ISO timestamp as `linkedAt`, `lastSync: null`)
-- [ ] Print the `join` command in a highlighted box
-
-**Smoke test:** Run `create` end-to-end. Verify the private repo is cloned into `~/.skillsync/store/<org-or-username>/<name>/`, the private repo exists on GitHub, invites were sent, selected skills appear in the repo, and the printed `join` command works from a second machine/account. If the user already has another repo joined, verify `status` shows both repos.
-
----
-
-### Phase 7 — `skillsync import`
-
-**Goal:** Let any team member add a skill to the shared repo after initial setup. Short phase — all dependencies are already built.
-
-**`src/commands/import.ts`**
-- [ ] Call `detectGh()` — always first
-- [ ] Accept `<path>` as required argument; validate it is an existing directory containing a `SKILL.md`
-- [ ] Parse `SKILL.md` frontmatter with `gray-matter` to determine `name` and `type` (`skill` | `agent`)
-- [ ] `readConfig()` — exit with styled error if `null` or `config.repos` is empty (suggest `join` or `create`)
-- [ ] Resolve the target repo: call `resolveRepo(config, flags['--repo'])` — auto-selects if one repo is joined, shows a `select` prompt if multiple are joined, or uses the `--repo` flag value directly
-- [ ] Copy the directory into `<repoConfig.storePath>/skills/<name>/` or `<repoConfig.storePath>/agents/<name>/` (exit with a styled error if a directory with that name already exists in the target repo's store — never silently overwrite)
-- [ ] Call `linkSkill()` to wire the new entry locally
-- [ ] `commitAll` + `push` on `repoConfig.storePath` with message `[skillsync] @<username> added <name>`
-- [ ] Print confirmation: skill name, where it lives in the store, symlink target
-
-**Smoke test:** With two repos joined, run `import <path>` with no flag — the repo `select` prompt appears. Re-run with `import <path> --repo acme/acme-skills` — skips the prompt and goes directly to that repo. Verify the skill appears under the correct namespaced store path (e.g. `~/.skillsync/store/acme/acme-skills/skills/<name>/`), is symlinked into `~/.claude/skills/`, and the commit is visible on GitHub.
-
----
-
-### Phase 8 — Daemon + Auto-sync
-
-**Goal:** Skills stay in sync automatically in the background. This is a core part of the product — manually running `sync` after every edit is too much friction for a team tool.
-
-**`src/lib/watcher.ts`**
-- [ ] Watch `~/.skillsync/store/` with chokidar; debounce 2 seconds before triggering sync to avoid noisy partial-write events
-- [ ] Add a 60-second remote poll loop alongside the file watcher to catch changes pushed by teammates
-
-**`src/lib/merger.ts`**
-- [ ] Frontmatter-aware three-way merge using `gray-matter` + `diff-match-patch`; merge markdown body independently of frontmatter fields
-- [ ] Auto-merge additive changes; create `.sync-conflict` file only on genuine irresolvable conflicts
-
-**`src/commands/daemon.ts`** — `start|stop|status` subcommand
-- [ ] `start` — detach with `Bun.spawn`, write PID to `~/.skillsync/daemon.pid`, log sync events to `~/.skillsync/daemon.log`
-- [ ] `stop` — read PID file, send SIGTERM, remove PID file
-- [ ] `status` — check PID is alive, print uptime and last sync timestamp
-
-**`src/lib/git.ts`** (update)
-- [ ] Replace the current `SyncConflictError` bail-out in `pullRebase` with the merger; only fail loudly if the merger itself cannot resolve
-
-**`src/index.ts`**
-- [ ] Register `daemon` command with `start|stop|status` subcommands
-
-**Smoke test:** Run `skillsync daemon start`. Edit a skill file in `~/.skillsync/store/`. Within 3 seconds verify a commit appears on GitHub without any manual `sync`. Run `skillsync daemon status` — shows alive. Edit a file from a second machine and push; within 60 seconds the first machine reflects the update. Run `skillsync daemon stop` — PID file removed, watcher exits.
-
----
-
-### Phase 9 — Polish and Distribution
-
-**Goal:** Zero rough edges. Ready for a real team to use.
-
-- [ ] Global error boundary in `src/index.ts` — catch any unhandled rejection, print a styled error with the message and a `--debug` hint, exit 1; never show a raw stack trace in normal mode
-- [ ] Add `--debug` flag to `src/index.ts` — when set, print full stack traces and raw command output
-- [ ] Audit every command: `detectGh()` is the first call, every early-exit uses a styled message, no `console.log` anywhere
-- [ ] Confirm that every successful `sync` updates `repoConfig.lastSync` in `config.repos` via `addRepo()` — no separate flat file needed; `status` reads it from there
-- [ ] Add `--version` flag — read from `package.json` at build time
-- [ ] Write project `README.md` — install instructions, 60-second quick-start, full command reference
-- [ ] Run `bun run typecheck` and `bun run lint` to zero errors/warnings
-- [ ] Publish to npm: `npm publish --access public`
-- [ ] Verify `bunx skillsync --help` works from a clean machine with only Bun installed
-
-**Smoke test (end-to-end):** On a clean machine, run the full multi-repo lead → teammate flow:
-1. `bunx skillsync create` — creates `acme/acme-skills`, cloned into `~/.skillsync/store/acme/acme-skills/`
-2. `bunx skillsync join personal/my-skills` on the same machine — both repos now appear in `config.repos`; `bunx skillsync status` shows two repo blocks
-3. Accept invite on GitHub; run `bunx skillsync join acme/acme-skills` on a second account — skills from both repos land in `~/.claude/skills/` via separate symlink trees
-4. Edit a skill file under `~/.skillsync/store/acme/acme-skills/skills/`; run `bunx skillsync sync` — both repos are processed; only the modified one produces a commit
-5. Run `bunx skillsync sync --repo personal/my-skills` — only that repo is touched; `acme/acme-skills` lastSync timestamp is unchanged
-6. Verify the second account sees the update after their own `sync`. Total time should be under 60 seconds of active work.
+- Automatic merge conflict resolution (currently fails loudly)
+- Multi-target placement for Cursor, Codex, and other agents
+- Repo manifest file for selective sync
+- `skillsync update` to re-link after repo structure changes
