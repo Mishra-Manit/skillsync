@@ -527,9 +527,10 @@ skillsync/
 | `status` | Included — current state display |
 | `import` | Included — add a skill post-setup |
 | `check-git` | Included — gh setup diagnostics |
-| `daemon` | Not in current implementation |
+| `destroy` | Included — full teardown with backup restore and optional GitHub deletion |
+| `daemon` | Included — background auto-sync via chokidar + 60s poll |
+| Merge conflict auto-resolution | Included — frontmatter-aware three-way merge via diff-match-patch |
 | Multi-target (codex, cursor) | Not in current implementation |
-| Merge conflict auto-resolution | Not in current implementation (sync fails loudly and asks for manual resolution) |
 
 Current success metric: a team lead can go from `bunx skillsync create` to a teammate successfully running `bunx skillsync join` and having skills in Claude Code in under 60 seconds (excluding GitHub invite accept time).
 
@@ -537,8 +538,6 @@ Current success metric: a team lead can go from `bunx skillsync create` to a tea
 
 ## Future Enhancements
 
-- Daemon with auto-sync (chokidar + poll)
-- Frontmatter-aware conflict merging (diff-match-patch)
 - Multi-target placement (codex, cursor)
 - `skillsync diff <skill>` — compare local backup to team version
 - Desktop notifications on sync failure
@@ -713,6 +712,49 @@ Current success metric: a team lead can go from `bunx skillsync create` to a tea
 
 ---
 
+### Phase 6.5 — `skillsync destroy` (full teardown with backup restore)
+
+**Goal:** A user can completely remove a repo from their machine in one command — symlinks removed, original backed-up skills/agents restored to their proper places, local store deleted, config entry cleared, and optionally the GitHub repo deleted.
+
+**Difference from `leave`:** `leave` only removes symlinks. `destroy` also restores any `.backup/` originals that were displaced when the repo was created or joined.
+
+**`src/commands/destroy.ts`**
+- [x] Call `detectGh()` — always first
+- [x] `readConfig()` — exit with a styled error if no repos are joined
+- [x] Accept `[repo]` as an optional argument (the `owner/repo` slug)
+- [x] If omitted and one repo is joined, use it automatically; if multiple repos are joined and no arg is given, show a `select` prompt so the user picks one
+- [x] Show a single confirmation: `Destroy <repo>? Symlinks removed, backups restored, local store deleted.` (default: no)
+- [x] Call `listLinkedDetailed()`, filter to the chosen repo
+- [x] For each owned item: `unlinkSkill()`, then if `hasBackup()` is true call `restoreBackup()` and count it
+- [x] Delete the store directory with `rm -rf <storePath>`
+- [x] Call `removeRepo(slug)` to clear the config entry
+- [x] Ask: `Also delete <repo> on GitHub?` (default: no) — if yes, shell out to `gh repo delete <slug> --yes`; warn on failure
+- [x] Print summary: items removed, backups restored, store deleted, and GitHub status if applicable
+
+**`src/index.ts`**
+- [x] Register `destroy` command
+
+```
+$ skillsync destroy Mishra-Manit/haha-test
+
+  skillsync destroy
+  Destroy Mishra-Manit/haha-test? Symlinks removed, backups restored, local store deleted. (y/N) y
+
+  ✓ agent-browser  backup restored
+  ✓ branch  unlinked
+  ✓ plan  backup restored
+  ✓ brainstorming  backup restored
+
+  Also delete Mishra-Manit/haha-test on GitHub? (y/N) y
+  ✓ Mishra-Manit/haha-test  deleted from GitHub
+
+  4 items removed, 3 backups restored, store deleted
+```
+
+**Smoke test:** Run `skillsync create`, share some skills (causes backups), then run `skillsync destroy <repo>`. Verify that backed-up skills are restored to `~/.claude/skills/` or `~/.claude/agents/`, the store directory is gone, and the config entry is absent. Confirm the GitHub repo is deleted when the user accepts the prompt.
+
+---
+
 ### Phase 5 — `skillsync status`
 
 **Goal:** A quick read-only health check. All dependencies already exist — this phase should take under an hour.
@@ -777,7 +819,34 @@ Current success metric: a team lead can go from `bunx skillsync create` to a tea
 
 ---
 
-### Phase 8 — Polish and Distribution
+### Phase 8 — Daemon + Auto-sync
+
+**Goal:** Skills stay in sync automatically in the background. This is a core part of the product — manually running `sync` after every edit is too much friction for a team tool.
+
+**`src/lib/watcher.ts`**
+- [ ] Watch `~/.skillsync/store/` with chokidar; debounce 2 seconds before triggering sync to avoid noisy partial-write events
+- [ ] Add a 60-second remote poll loop alongside the file watcher to catch changes pushed by teammates
+
+**`src/lib/merger.ts`**
+- [ ] Frontmatter-aware three-way merge using `gray-matter` + `diff-match-patch`; merge markdown body independently of frontmatter fields
+- [ ] Auto-merge additive changes; create `.sync-conflict` file only on genuine irresolvable conflicts
+
+**`src/commands/daemon.ts`** — `start|stop|status` subcommand
+- [ ] `start` — detach with `Bun.spawn`, write PID to `~/.skillsync/daemon.pid`, log sync events to `~/.skillsync/daemon.log`
+- [ ] `stop` — read PID file, send SIGTERM, remove PID file
+- [ ] `status` — check PID is alive, print uptime and last sync timestamp
+
+**`src/lib/git.ts`** (update)
+- [ ] Replace the current `SyncConflictError` bail-out in `pullRebase` with the merger; only fail loudly if the merger itself cannot resolve
+
+**`src/index.ts`**
+- [ ] Register `daemon` command with `start|stop|status` subcommands
+
+**Smoke test:** Run `skillsync daemon start`. Edit a skill file in `~/.skillsync/store/`. Within 3 seconds verify a commit appears on GitHub without any manual `sync`. Run `skillsync daemon status` — shows alive. Edit a file from a second machine and push; within 60 seconds the first machine reflects the update. Run `skillsync daemon stop` — PID file removed, watcher exits.
+
+---
+
+### Phase 9 — Polish and Distribution
 
 **Goal:** Zero rough edges. Ready for a real team to use.
 
@@ -798,16 +867,3 @@ Current success metric: a team lead can go from `bunx skillsync create` to a tea
 4. Edit a skill file under `~/.skillsync/store/acme/acme-skills/skills/`; run `bunx skillsync sync` — both repos are processed; only the modified one produces a commit
 5. Run `bunx skillsync sync --repo personal/my-skills` — only that repo is touched; `acme/acme-skills` lastSync timestamp is unchanged
 6. Verify the second account sees the update after their own `sync`. Total time should be under 60 seconds of active work.
-
----
-
-### Phase 9 — Optional Later: Daemon + Auto-sync
-
-After the core flow is being actively used by at least one real team.
-
-- [ ] `src/lib/watcher.ts` — watch `~/.skillsync/store/` with chokidar; debounce 2 seconds before triggering sync
-- [ ] Add a 60-second remote poll loop alongside the file watcher
-- [ ] `src/commands/daemon.ts` — `start` (detach with `Bun.spawn`, write PID to `~/.skillsync/daemon.pid`), `stop` (read PID, `kill`), `status` (check PID is alive)
-- [ ] `src/lib/merger.ts` — frontmatter-aware three-way merge using `gray-matter` + `diff-match-patch`; merge body independently of frontmatter
-- [ ] Replace the current `SyncConflictError` bail-out in `git.ts` with the merger; only fail loudly if the merger itself cannot resolve
-- [ ] Extend `placer.ts` for multi-target placement: `~/.codex/skills/` and `~/.cursor/skills/` driven by `targets` in `skillsync.json`

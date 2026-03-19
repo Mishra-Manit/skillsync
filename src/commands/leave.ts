@@ -3,7 +3,7 @@ import { select, confirm } from '@crustjs/prompts'
 import { rm } from 'fs/promises'
 import { detectGh } from '../lib/github'
 import { readConfig, removeRepo, exitNoReposJoined, exitRepoNotFound, type RepoConfig } from '../lib/config'
-import { listLinkedDetailed, unlinkSkill } from '../lib/placer'
+import { assertSafeStorePath, listLinkedDetailed, unlinkSkill } from '../lib/placer'
 import { ui } from '../lib/ui'
 
 export async function runLeave(arg?: string): Promise<void> {
@@ -48,6 +48,7 @@ export async function runLeave(arg?: string): Promise<void> {
     await unlinkSkill(item.targetPath)
   }
 
+  assertSafeStorePath(target.storePath)
   await rm(target.storePath, { recursive: true, force: true })
   await removeRepo(target.repo)
 
