@@ -1,10 +1,12 @@
-import { style } from '@crustjs/style'
 import { detectGh } from '../lib/github'
+import { ui } from '../lib/ui'
 
-export async function runImport(skillPath: string): Promise<void> {
-  const { username } = await detectGh()
-  process.stderr.write(style.bold('skillsync import') + '\n')
-  process.stderr.write(style.dim(`Authenticated as @${username}\n`))
-  process.stderr.write(`Importing from ${skillPath}...\n`)
-  process.stderr.write(style.yellow('Not yet implemented.') + '\n')
+export async function runImport(_skillPath: string): Promise<void> {
+  const { username } = detectGh()
+
+  ui.header('import')
+  ui.subheader(`Authenticated as @${username}`)
+
+  ui.hint('Coming soon.')
+  ui.blank()
 }

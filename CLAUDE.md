@@ -33,7 +33,7 @@ Rules:
 - Use `@crustjs/prompts` for interactive input and `@crustjs/style` for output — never `console.log`
 - All prompt UI renders to stderr; stdout stays clean for piped output
 - Use `@crustjs/store` for any config/state persistence — never write JSON files manually
-- Use `zod` for schema validation of `skillsync.json` and any external data
+- Use `zod` for schema validation of any external data
 
 ## Code Style
 
@@ -53,7 +53,7 @@ Rules:
 
 **Store location**: each joined repo is cloned into `~/.skillsync/store/<owner>/<repo>/` — one namespaced subdirectory per team repo. Tool directories (`~/.claude/skills/`, etc.) contain symlinks pointing into the relevant store subdirectory. This means a user can be joined to multiple team repos simultaneously without any path collision.
 
-**Config format**: local machine state lives at `~/.skillsync/config.json` (managed by `@crustjs/store`). It holds a `username` string and a `repos` map keyed by repo slug (`"owner/repo"`), where each entry is a `RepoConfig` object (`{ repo, team, storePath, linkedAt, lastSync }`). `import` resolves a single target repo (auto if one joined, otherwise prompt unless `--repo` is passed). `sync` uses `--repo <owner/repo>` for one repo or, with no flag, processes all joined repos sequentially. The team repo's `skillsync.json` is committed to git and read as plain JSON; it is never confused with the local config.
+**Config format**: local machine state lives at `~/.skillsync/config.json` (managed by `@crustjs/store`). It holds a `username` string and a `repos` map keyed by repo slug (`"owner/repo"`), where each entry is a `RepoConfig` object (`{ repo, team, storePath, linkedAt, lastSync }`). `import` resolves a single target repo (auto if one joined, otherwise prompt unless `--repo` is passed). `sync` uses `--repo <owner/repo>` for one repo or, with no flag, processes all joined repos sequentially.
 
 **Commit messages**: auto-commits follow the format `[skillsync] @username updated <skill-name>`. Never prompt the user for a commit message.
 
@@ -71,7 +71,7 @@ Do not implement the daemon, multi-target placement (codex/cursor), or merge con
 | `@crustjs/prompts` | Interactive prompts (input, select, multiselect, spinner) |
 | `@crustjs/style` | Terminal color and text formatting |
 | `@crustjs/store` | Typed JSON config persistence at `~/.skillsync/` |
-| `zod` | Schema validation for `skillsync.json` |
+| `zod` | Schema validation for external data |
 
 See `docs/crustJS.md` for full CrustJS module docs.
 

@@ -1,7 +1,9 @@
-import { style } from '@crustjs/style'
+import { ui } from './ui'
 
 export function fatal(message: string, hint?: string): never {
-  process.stderr.write(style.red(`✗ ${message}\n`))
-  if (hint) process.stderr.write(style.dim(`  ${hint}\n`))
+  ui.blank()
+  ui.error(message)
+  if (hint) ui.hint(hint)
+  ui.blank()
   process.exit(1)
 }

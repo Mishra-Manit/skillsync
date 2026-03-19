@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { Crust } from '@crustjs/core'
-import { helpPlugin, versionPlugin } from '@crustjs/plugins'
+import { helpPlugin, versionPlugin, autoCompletePlugin } from '@crustjs/plugins'
 import { runCreate } from './commands/create'
 import { runJoin } from './commands/join'
 import { runSync } from './commands/sync'
@@ -12,8 +12,9 @@ import { runLeave } from './commands/leave'
 
 const cli = new Crust('skillsync')
   .meta({ description: 'Share and sync Claude Code agents and skills with your team' })
-  .use(helpPlugin())
   .use(versionPlugin('0.1.0'))
+  .use(autoCompletePlugin({ mode: 'help' }))
+  .use(helpPlugin())
   .command('create', (cmd) =>
     cmd.meta({ description: 'Create a shared team skills repo' }).run(runCreate)
   )
@@ -48,7 +49,6 @@ const cli = new Crust('skillsync')
       })
       .run((ctx) => runDelete(ctx.args.name, ctx.flags))
   )
-
   .command('leave', (cmd) =>
     cmd
       .meta({ description: 'Leave a joined team repo and remove all its linked items' })

@@ -3,6 +3,7 @@ import { multiselect, confirm } from '@crustjs/prompts'
 import { detectGh } from '../lib/github'
 import { readConfig, exitNoReposJoined, exitRepoNotFound } from '../lib/config'
 import { storeRoot, listLinkedDetailed, unlinkSkill, hasBackup, restoreBackup, type LinkedItem } from '../lib/placer'
+import { ui } from '../lib/ui'
 
 type DeleteFlags = {
   repo?: string
@@ -16,13 +17,15 @@ function repoSlugFrom(item: LinkedItem): string {
 }
 
 export async function runDelete(name: string | undefined, flags: DeleteFlags): Promise<void> {
-  await detectGh()
+  detectGh()
+
+  ui.header('delete')
 
   const config = await readConfig()
   if (!config || Object.keys(config.repos).length === 0) exitNoReposJoined()
-
   if (flags.repo && !config.repos[flags.repo]) exitRepoNotFound(flags.repo)
 
+  // Build candidate list
   let candidates = await listLinkedDetailed()
 
   if (flags.repo) {
@@ -35,44 +38,47 @@ export async function runDelete(name: string | undefined, flags: DeleteFlags): P
   }
 
   if (candidates.length === 0) {
-    process.stderr.write(style.dim('Nothing to delete.\n'))
-    process.exit(0)
+    ui.hint('Nothing to delete.')
+    return
   }
 
-  // Sort by repo, type, name for visual grouping
+  // Sort by repo, type, name
   candidates.sort((a, b) => {
     const ra = repoSlugFrom(a)
     const rb = repoSlugFrom(b)
     return ra.localeCompare(rb) || a.type.localeCompare(b.type) || a.name.localeCompare(b.name)
   })
 
+  // Select items
   let selected: LinkedItem[]
 
   if (!name && !flags.all) {
     const choices = candidates.map((item) => ({
-      label: `${item.name}  ${style.dim(`${item.type} · ${repoSlugFrom(item)}`)}`,
+      label: `${item.name}  ${style.dim(`${item.type} | ${repoSlugFrom(item)}`)}`,
       value: item.targetPath,
     }))
-    const picked = await multiselect({ message: 'Select items to remove', choices, default: [] })
-    if (!picked || (picked as string[]).length === 0) {
-      process.stderr.write(style.dim('Nothing selected.\n'))
-      process.exit(0)
+    const picked = (await multiselect({ message: 'Select items to remove', choices, default: [] })) as string[]
+    if (picked.length === 0) {
+      ui.hint('Nothing selected.')
+      return
     }
-    selected = candidates.filter((item) => (picked as string[]).includes(item.targetPath))
+    selected = candidates.filter((item) => picked.includes(item.targetPath))
   } else {
     selected = candidates
   }
 
+  // Confirm
   const ok = await confirm({
     message: `Remove ${selected.length} item${selected.length > 1 ? 's' : ''}?`,
     default: false,
   })
   if (!ok) {
-    process.stderr.write(style.dim('Aborted.\n'))
-    process.exit(0)
+    ui.hint('Aborted.')
+    return
   }
 
-  process.stderr.write('\n')
+  // Delete and restore backups
+  ui.blank()
   let restored = 0
 
   for (const item of selected) {
@@ -80,12 +86,14 @@ export async function runDelete(name: string | undefined, flags: DeleteFlags): P
     if (await hasBackup(item.targetPath)) {
       await restoreBackup(item.targetPath)
       restored++
-      process.stderr.write(style.green('✓') + ` ${item.name}  ${style.dim('backup restored')}\n`)
+      ui.success(`${item.name}  ${style.dim('backup restored')}`)
     } else {
-      process.stderr.write(style.green('✓') + ` ${item.name}\n`)
+      ui.success(item.name)
     }
   }
 
   const summary = restored > 0 ? `, ${restored} backup${restored > 1 ? 's' : ''} restored` : ''
-  process.stderr.write('\n' + style.dim(`${selected.length} removed${summary}\n`))
+  ui.blank()
+  ui.hint(`${selected.length} removed${summary}`)
+  ui.blank()
 }

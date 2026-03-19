@@ -16,16 +16,6 @@ export type Config = {
   repos: Record<string, RepoConfig>
 }
 
-export class NeedsRepoSelectError extends Error {
-  readonly entries: RepoConfig[]
-
-  constructor(entries: RepoConfig[]) {
-    super('Multiple repos joined — selection required')
-    this.name = 'NeedsRepoSelectError'
-    this.entries = entries
-  }
-}
-
 const store = createStore({
   dirPath: join(homedir(), '.skillsync'),
   fields: {
@@ -78,30 +68,3 @@ export function exitRepoNotFound(slug: string): never {
   fatal(`Repo "${slug}" is not in your joined repos.`, 'Run `skillsync status` to see joined repos.')
 }
 
-export function resolveRepo(config: Config, flag?: string): RepoConfig {
-  if (flag) {
-    const entry = config.repos[flag]
-    if (!entry) exitRepoNotFound(flag)
-    return entry
-  }
-
-  const entries = Object.values(config.repos)
-
-  if (entries.length === 0) exitNoReposJoined()
-
-  if (entries.length === 1) return entries[0]!
-
-  throw new NeedsRepoSelectError(entries)
-}
-
-export function resolveSyncRepos(config: Config, flag?: string): RepoConfig[] {
-  if (flag) {
-    const entry = config.repos[flag]
-    if (!entry) exitRepoNotFound(flag)
-    return [entry]
-  }
-
-  const entries = Object.values(config.repos)
-  if (entries.length === 0) exitNoReposJoined()
-  return entries
-}

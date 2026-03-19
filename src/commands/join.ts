@@ -1,27 +1,22 @@
 import { style } from '@crustjs/style'
 import { confirm, spinner } from '@crustjs/prompts'
-import { readdir, readFile, rm } from 'fs/promises'
+import { rm } from 'fs/promises'
 import { homedir } from 'os'
 import { join } from 'path'
-import { z } from 'zod'
 import { fatal } from '../lib/errors'
 import { detectGh } from '../lib/github'
 import { readConfig, addRepo } from '../lib/config'
 import { cloneRepo, CloneError } from '../lib/git'
-import { linkSkill } from '../lib/placer'
+import { linkAllFromStore } from '../lib/placer'
+import { ui } from '../lib/ui'
 
 const slugPattern = /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/
 
-const skillsyncJsonSchema = z.object({
-  team: z.object({ name: z.string(), repo: z.string() }),
-  sync: z
-    .object({ interval: z.number().optional(), strategy: z.string().optional() })
-    .optional(),
-  targets: z.object({ claude: z.boolean().optional() }).optional(),
-})
-
 export async function runJoin(repo: string): Promise<void> {
-  const { username } = await detectGh()
+  const { username } = detectGh()
+
+  ui.header('join')
+  ui.subheader(`Authenticated as @${username}`)
 
   if (!slugPattern.test(repo)) {
     fatal(`Invalid repo format: "${repo}"`, 'Expected <owner>/<repo>, e.g. acme/acme-skills')
@@ -30,6 +25,7 @@ export async function runJoin(repo: string): Promise<void> {
   const [owner, repoName] = repo.split('/') as [string, string]
   const storePath = join(homedir(), '.skillsync', 'store', owner, repoName)
 
+  // Handle re-join
   const config = await readConfig()
   if (config?.repos[repo]) {
     const reclone = await confirm({
@@ -37,50 +33,27 @@ export async function runJoin(repo: string): Promise<void> {
       default: false,
     })
     if (!reclone) {
-      process.stderr.write(style.dim('Skipped. Already joined.\n'))
-      process.exit(0)
+      ui.hint('Skipped. Already joined.')
+      return
     }
     await rm(storePath, { recursive: true, force: true })
   }
 
+  // Clone
   try {
     await spinner({
       message: `Cloning ${repo}...`,
-      task: async () => {
-        await cloneRepo(repo, storePath)
-      },
+      task: async () => cloneRepo(repo, storePath),
     })
   } catch (err) {
     if (err instanceof CloneError) fatal(err.message)
     throw err
   }
 
-  let rawJson: string
-  try {
-    rawJson = await readFile(join(storePath, 'skillsync.json'), 'utf8')
-  } catch {
-    fatal('No skillsync.json found in the cloned repo.', 'Is this a valid skillsync team repo?')
-  }
-
-  let rawParsed: unknown
-  try {
-    rawParsed = JSON.parse(rawJson)
-  } catch {
-    fatal('skillsync.json is not valid JSON.')
-  }
-
-  const parsed = skillsyncJsonSchema.safeParse(rawParsed)
-  if (!parsed.success) {
-    const issues = parsed.error.issues
-      .map((i) => `${i.path.join('.')}: ${i.message}`)
-      .join('\n  ')
-    fatal('skillsync.json is invalid:', issues)
-  }
-
   await addRepo(
     {
       repo,
-      team: parsed.data.team.name,
+      team: repoName,
       storePath,
       linkedAt: new Date().toISOString(),
       lastSync: null,
@@ -88,57 +61,31 @@ export async function runJoin(repo: string): Promise<void> {
     username,
   )
 
-  const results: Array<{ name: string; result: Awaited<ReturnType<typeof linkSkill>> }> = []
+  // Link all items
+  const results = await linkAllFromStore(storePath)
 
-  // Link skills (subdirectories of <storePath>/skills/)
-  const skillsDir = join(storePath, 'skills')
-  try {
-    const skillEntries = await readdir(skillsDir, { withFileTypes: true })
-    for (const entry of skillEntries) {
-      if (!entry.isDirectory() || entry.name.startsWith('.')) continue
-      const src = join(skillsDir, entry.name)
-      const dest = join(homedir(), '.claude', 'skills', entry.name)
-      results.push({ name: entry.name, result: await linkSkill(src, dest) })
-    }
-  } catch (err: unknown) {
-    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
-  }
-
-  // Link agents (.md files in <storePath>/agents/)
-  const agentsDir = join(storePath, 'agents')
-  try {
-    const agentEntries = await readdir(agentsDir, { withFileTypes: true })
-    for (const entry of agentEntries) {
-      if (!entry.isFile() || !entry.name.endsWith('.md')) continue
-      const src = join(agentsDir, entry.name)
-      const dest = join(homedir(), '.claude', 'agents', entry.name)
-      results.push({ name: entry.name, result: await linkSkill(src, dest) })
-    }
-  } catch (err: unknown) {
-    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
-  }
-
-  // Print per-item results
-  process.stderr.write('\n')
+  ui.blank()
   for (const { name, result } of results) {
     if (result.type === 'linked') {
-      process.stderr.write(style.green('✓') + ` ${name}\n`)
+      ui.success(name)
     } else if (result.type === 'backed-up') {
-      process.stderr.write(style.yellow('! backed up → .backup/') + ` ${name}\n`)
+      ui.warn(`${name} ${style.dim('backed up to .backup/')}`)
     } else if (result.type === 'skipped' && result.reason === 'already-linked') {
-      process.stderr.write(style.dim(`– already linked: ${name}\n`))
+      ui.info(`${name} ${style.dim('already linked')}`)
     } else {
-      process.stderr.write(style.yellow(`! skipped (name collision from another repo): ${name}\n`))
+      ui.warn(`${name} ${style.dim('skipped (name collision from another repo)')}`)
     }
   }
 
+  // Summary
   const linked = results.filter((r) => r.result.type === 'linked').length
   const backedUp = results.filter((r) => r.result.type === 'backed-up').length
   const skipped = results.filter((r) => r.result.type === 'skipped').length
 
-  process.stderr.write(
-    '\n' +
-      style.bold(`Joined ${repo}`) +
-      style.dim(` — ${linked} linked, ${backedUp} backed up, ${skipped} skipped\n`),
+  ui.blank()
+  ui.line(
+    style.bold(`Joined ${repo}`) +
+      style.dim(` -- ${linked} linked, ${backedUp} backed up, ${skipped} skipped`),
   )
+  ui.blank()
 }

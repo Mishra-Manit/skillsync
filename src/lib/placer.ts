@@ -1,4 +1,5 @@
 import { lstat, readlink, symlink, mkdir, rename, unlink, readdir } from 'fs/promises'
+import type { Dirent } from 'fs'
 import { homedir } from 'os'
 import { join, dirname, basename, isAbsolute } from 'path'
 
@@ -9,10 +10,15 @@ export type LinkedItem = {
   resolvedStorePath: string
 }
 
-type LinkResult =
+export type LinkResult =
   | { type: 'linked' }
   | { type: 'backed-up'; backupPath: string }
   | { type: 'skipped'; reason: 'already-linked' | 'collision' }
+
+export type LinkResultEntry = {
+  name: string
+  result: LinkResult
+}
 
 export const storeRoot = join(homedir(), '.skillsync', 'store') + '/'
 
@@ -69,15 +75,14 @@ export async function unlinkSkill(targetPath: string): Promise<void> {
 async function scanDir(dir: string, type: 'skill' | 'agent'): Promise<LinkedItem[]> {
   const items: LinkedItem[] = []
   try {
-    const entries = await readdir(dir)
+    const entries = await readdir(dir, { withFileTypes: true })
     for (const entry of entries) {
-      const targetPath = join(dir, entry)
+      if (!entry.isSymbolicLink()) continue
+      const targetPath = join(dir, entry.name)
       try {
-        const stat = await lstat(targetPath)
-        if (!stat.isSymbolicLink()) continue
         const abs = resolveLink(await readlink(targetPath), targetPath)
         if (!abs.startsWith(storeRoot)) continue
-        items.push({ name: entry, type, targetPath, resolvedStorePath: abs })
+        items.push({ name: entry.name, type, targetPath, resolvedStorePath: abs })
       } catch {
         // skip unreadable entries
       }
@@ -113,4 +118,44 @@ export async function restoreBackup(targetPath: string): Promise<'restored' | 'm
   } catch {
     return 'missing'
   }
+}
+
+type ScanEntry = { name: string; srcPath: string }
+
+async function scanStoreDir(
+  dir: string,
+  filter: (entry: Dirent) => boolean,
+): Promise<ScanEntry[]> {
+  try {
+    const entries = await readdir(dir, { withFileTypes: true })
+    return entries
+      .filter(filter)
+      .map((e) => ({ name: e.name, srcPath: join(dir, e.name) }))
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
+    return []
+  }
+}
+
+export async function linkAllFromStore(storePath: string): Promise<LinkResultEntry[]> {
+  const claudeDir = join(homedir(), '.claude')
+
+  const skills = await scanStoreDir(
+    join(storePath, 'skills'),
+    (e) => e.isDirectory() && !e.name.startsWith('.'),
+  )
+  const agents = await scanStoreDir(
+    join(storePath, 'agents'),
+    (e) => e.isFile() && e.name.endsWith('.md'),
+  )
+
+  const link = async (name: string, src: string, dest: string): Promise<LinkResultEntry> => ({
+    name,
+    result: await linkSkill(src, dest),
+  })
+
+  return Promise.all([
+    ...skills.map((s) => link(s.name, s.srcPath, join(claudeDir, 'skills', s.name))),
+    ...agents.map((a) => link(a.name, a.srcPath, join(claudeDir, 'agents', a.name))),
+  ])
 }
