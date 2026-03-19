@@ -10,6 +10,7 @@ import { addRepo } from '../lib/config'
 import { discoverLocalSkills } from '../lib/discovery'
 import { linkAllFromStore } from '../lib/placer'
 import { ui } from '../lib/ui'
+import { ensureDaemonRunning } from './daemon'
 
 const teamNamePattern = /^[a-z0-9-]+$/
 
@@ -257,5 +258,8 @@ export async function runCreate(): Promise<void> {
       ? `Created ${repoSlug} with ${copied} shared item${copied !== 1 ? 's' : ''}.`
       : `Created ${repoSlug}.`
   ui.hint(summary)
+  ui.blank()
+
+  await ensureDaemonRunning()
   ui.blank()
 }

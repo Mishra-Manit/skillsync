@@ -18,9 +18,10 @@ Write extremely easy to consume code, optimize for how easy the code is to read.
 
 ```
 src/
-  commands/    # one file per CLI command (create, join, sync, daemon, status, import)
-  lib/         # shared logic (git, watcher, merger, placer, discovery, config, github)
-  index.ts     # @crustjs/core entrypoint — register subcommands here, thin as possible
+  commands/        # one file per CLI command (create, join, sync, daemon, status, import, delete, leave, destroy, check-git)
+  lib/             # shared logic (git, syncer, watcher, placer, discovery, config, github, ui, errors)
+  daemon-worker.ts # standalone background process entry point (not a CrustJS command)
+  index.ts         # @crustjs/core entrypoint — register subcommands here, thin as possible
 ```
 
 Each command file imports only from `lib/`. Commands contain no business logic — they wire up @crustjs/prompts and call lib functions.
@@ -59,9 +60,9 @@ Rules:
 
 ## Current Scope
 
-Current commands: `create`, `join`, `sync`, `status`, `import`, `check-git`.
+Current commands: `create`, `join`, `sync`, `status`, `import`, `check-git`, `delete`, `leave`, `destroy`, `daemon start|stop|status`.
 
-Do not implement the daemon, multi-target placement (codex/cursor), or merge conflict resolution yet. On sync conflict, fail loudly with a clear error and tell the user to resolve manually.
+Do not implement multi-target placement (codex/cursor) or automatic merge conflict resolution yet. On sync conflict, fail loudly with a clear error and tell the user to resolve manually.
 
 ## Dependencies
 
@@ -71,6 +72,7 @@ Do not implement the daemon, multi-target placement (codex/cursor), or merge con
 | `@crustjs/prompts` | Interactive prompts (input, select, multiselect, spinner) |
 | `@crustjs/style` | Terminal color and text formatting |
 | `@crustjs/store` | Typed JSON config persistence at `~/.skillsync/` |
+| `chokidar` | File system watching for daemon auto-sync |
 | `zod` | Schema validation for external data |
 
 See `docs/crustJS.md` for full CrustJS module docs.
