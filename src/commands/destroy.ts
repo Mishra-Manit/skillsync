@@ -1,9 +1,9 @@
 import { style } from '@crustjs/style'
-import { select, confirm } from '@crustjs/prompts'
+import { confirm } from '@crustjs/prompts'
 import { rm } from 'fs/promises'
 import { detectGh } from '../lib/github'
-import { readConfig, removeRepo, exitNoReposJoined, exitRepoNotFound, type RepoConfig } from '../lib/config'
-import { assertSafeStorePath, listLinkedDetailed, unlinkSkill, hasBackup, restoreBackup } from '../lib/placer'
+import { readConfig, removeRepo, exitNoReposJoined, resolveRepo } from '../lib/config'
+import { assertSafeStorePath, getOwnedItems, unlinkSkill, hasBackup, restoreBackup } from '../lib/placer'
 import { fatal } from '../lib/errors'
 import { ui } from '../lib/ui'
 
@@ -15,31 +15,7 @@ export async function runDestroy(arg?: string): Promise<void> {
   const config = await readConfig()
   if (!config || Object.keys(config.repos).length === 0) exitNoReposJoined()
 
-  let target: RepoConfig
-
-  const repos = config.repos
-
-  if (arg) {
-    const repo = repos[arg]
-    if (!repo) exitRepoNotFound(arg)
-    target = repo
-  } else {
-    const repoList = Object.values(repos)
-
-    if (repoList.length === 1) {
-      target = repoList[0]!
-    } else {
-      const choices = repoList.map((repo) => ({
-        label: repo.repo,
-        value: repo.repo,
-      }))
-      const picked = await select({
-        message: 'Which repo do you want to destroy?',
-        choices,
-      })
-      target = repos[picked as string]!
-    }
-  }
+  const target = await resolveRepo(config, arg, 'Which repo do you want to destroy?')
 
   const ok = await confirm({
     message: `Destroy ${target.repo}? Symlinks removed, backups restored, local store deleted.`,
@@ -50,10 +26,7 @@ export async function runDestroy(arg?: string): Promise<void> {
     return
   }
 
-  // Unlink all symlinks owned by this repo, restoring any backups
-  const allLinked = await listLinkedDetailed()
-  const storePath = target.storePath.endsWith('/') ? target.storePath : target.storePath + '/'
-  const owned = allLinked.filter((item) => item.resolvedStorePath.startsWith(storePath))
+  const owned = await getOwnedItems(target.storePath)
 
   let restored = 0
   try {
