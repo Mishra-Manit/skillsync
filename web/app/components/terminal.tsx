@@ -9,13 +9,10 @@ export function Terminal() {
 
       <div className="flex flex-col gap-1.5 px-5 pb-5 pt-4">
         <p className="font-mono text-[13px] text-[#BFC5CC]">
-          $ npx @manitmishra/skillsync create
-        </p>
-        <p className="font-mono text-[13px] text-[#ECEFF2]">
-          &nbsp;&nbsp;<span className="font-semibold">skillsync create</span>
+          $ skillsync create
         </p>
         <p className="font-mono text-[13px] text-[#BFC5CC]">
-          &nbsp;&nbsp;Authenticated as @you
+          &nbsp;&nbsp;Authenticated as @Mishra-Manit
         </p>
         <p className="font-mono text-[13px] text-[#BFC5CC]">&nbsp;</p>
         <p className="font-mono text-[13px] text-[#A7D4B2]">
@@ -33,11 +30,11 @@ export function Terminal() {
           team:</span>
         </p>
         <p className="font-mono text-[13px] text-[#A7D4B2]">
-          &nbsp;&nbsp;&nbsp;&nbsp;npx @manitmishra/skillsync join acme/acme-skills
+          &nbsp;&nbsp;&nbsp;&nbsp;skillsync join Mishra-Manit/superior-skills
         </p>
         <p className="font-mono text-[13px] text-[#BFC5CC]">&nbsp;</p>
         <p className="font-mono text-[13px] text-[#BFC5CC]">
-          &nbsp;&nbsp;Created acme/acme-skills with 3 shared items.
+          &nbsp;&nbsp;Created Mishra-Manit/superior-skills with 3 shared items.
         </p>
       </div>
     </div>

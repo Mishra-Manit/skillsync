@@ -35,13 +35,18 @@ export function FinalCta() {
       <div className="flex items-center gap-2.5 rounded-3xl bg-accent px-7 py-4">
         <TerminalIcon />
         <span className="font-mono text-sm font-medium text-white">
-          npx @manitmishra/skillsync create
+          npm install -g @manitmishra/skillsync
         </span>
       </div>
 
-      <span className="font-sans text-xs text-subtle">
+      <a
+        href="https://www.npmjs.com/package/@manitmishra/skillsync"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="font-sans text-xs text-subtle underline underline-offset-2"
+      >
         Free and open source. MIT licensed.
-      </span>
+      </a>
     </section>
   );
 }

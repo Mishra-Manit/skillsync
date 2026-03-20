@@ -4,10 +4,10 @@ Share and sync Claude Code agents and skills with your team. One command. No new
 
 ## Installation
 
-Install and run skillsync with a single command — no global install required:
+Install skillsync globally:
 
 ```bash
-npx @manitmishra/skillsync
+npm install -g @manitmishra/skillsync
 ```
 
 ### Prerequisites
@@ -23,7 +23,7 @@ The fastest way to get your team sharing skills:
 **1. Create a shared repo**
 
 ```bash
-npx @manitmishra/skillsync create
+skillsync create
 ```
 
 This walks you through creating a GitHub repo, optionally inviting teammates, and selecting your best local skills and agents to seed it with.
@@ -31,7 +31,7 @@ This walks you through creating a GitHub repo, optionally inviting teammates, an
 **2. Teammates join**
 
 ```bash
-npx @manitmishra/skillsync join owner/repo-name
+skillsync join owner/repo-name
 ```
 
 Clones the shared repo and symlinks all skills and agents into their local `~/.claude/` directories.
@@ -39,14 +39,12 @@ Clones the shared repo and symlinks all skills and agents into their local `~/.c
 **3. Stay in sync**
 
 ```bash
-npx @manitmishra/skillsync sync
+skillsync sync
 ```
 
 Pulls latest changes from the team repo and pushes any local updates. The background daemon does this automatically.
 
 ## Commands
-
-All commands are run via `npx @manitmishra/skillsync <command>` or, if installed globally, `skillsync <command>`.
 
 ### create
 

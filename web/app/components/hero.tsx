@@ -1,5 +1,18 @@
 import { Terminal } from "./terminal";
 
+function NpmIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="currentColor"
+    >
+      <path d="M0 0v16h16V0H0zm13 13H8V5H5v8H3V3h10v10z" />
+    </svg>
+  );
+}
+
 function TerminalIcon() {
   return (
     <svg
@@ -47,6 +60,15 @@ export function Hero() {
         >
           <TerminalIcon />
           Get Started
+        </a>
+        <a
+          href="https://www.npmjs.com/package/@manitmishra/skillsync"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-2 rounded-3xl border border-border px-7 py-3.5 font-sans text-sm font-medium text-body-muted"
+        >
+          <NpmIcon />
+          View on npm
         </a>
         <a
           href="/docs"
