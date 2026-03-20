@@ -1,10 +1,21 @@
 {
-  "name": "skillsync",
+  "name": "skillsync-cli",
   "version": "0.1.0",
   "description": "Share and sync Claude Code agents and skills with your team",
+  "license": "MIT",
+  "author": "Manit Mishra",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/manitmishra/skillsync.git"
+  },
+  "homepage": "https://github.com/manitmishra/skillsync#readme",
+  "keywords": ["claude", "claude-code", "ai", "skills", "agents", "sync", "cli", "bun"],
+  "engines": {
+    "bun": ">=1.0.0"
+  },
   "type": "module",
   "bin": {
-    "skillsync": "./dist/index.js"
+    "skillsync-cli": "./dist/index.js"
   },
   "files": [
     "dist"
@@ -14,7 +25,7 @@
     "dev": "bun --watch src/index.ts",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "bun run build"
+    "prepublishOnly": "rm -rf dist && bun run build"
   },
   "dependencies": {
     "@crustjs/core": "^0.0.15",

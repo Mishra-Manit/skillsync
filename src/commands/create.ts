@@ -25,13 +25,13 @@ function buildReadme(teamName: string, repoSlug: string): string {
     '## Join this team',
     '',
     '```bash',
-    `bunx skillsync join ${repoSlug}`,
+    `bunx skillsync-cli join ${repoSlug}`,
     '```',
     '',
     '## Sync updates',
     '',
     '```bash',
-    'bunx skillsync sync',
+    'bunx skillsync-cli sync',
     '```',
     '',
   ].join('\n')
@@ -246,7 +246,7 @@ export async function runCreate(): Promise<void> {
   }
 
   // Share the join command
-  const joinCmd = `bunx skillsync join ${repoSlug}`
+  const joinCmd = `bunx skillsync-cli join ${repoSlug}`
   ui.blank()
   ui.line(style.bold('Share this command with your team:'))
   ui.blank()

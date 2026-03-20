@@ -1,6 +1,7 @@
 import { readFileSync, existsSync, statSync, unlinkSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
+import { readConfig } from '../lib/config'
 import { ui } from '../lib/ui'
 
 const PID_FILE = join(homedir(), '.skillsync', 'daemon.pid')
@@ -51,7 +52,6 @@ async function spawnWorker(): Promise<number | null> {
   })
   proc.unref()
 
-  // Poll for PID file with short timeout
   const deadline = Date.now() + 3000
   while (Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 200))
@@ -59,6 +59,22 @@ async function spawnWorker(): Promise<number | null> {
     if (pid !== null && isAlive(pid)) return pid
   }
   return null
+}
+
+/**
+ * Silently revive the daemon if it's dead and the user has joined repos.
+ * No UI output — intended for the auto-revive plugin.
+ */
+export async function reviveDaemonIfNeeded(): Promise<void> {
+  const pid = readPid()
+  if (pid !== null && isAlive(pid)) return
+
+  // Only revive if the user actually has repos to sync
+  const config = await readConfig()
+  if (!config || Object.keys(config.repos).length === 0) return
+
+  if (pid !== null) cleanStalePid()
+  await spawnWorker()
 }
 
 export async function ensureDaemonRunning(): Promise<void> {

@@ -1,3 +1,6 @@
 node_modules/
 dist/
 *.log
+
+# web app build output (web/ has its own .gitignore too)
+web/.next/
