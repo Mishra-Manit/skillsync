@@ -1,0 +1,329 @@
+# skillsync CLI
+
+Share and sync Claude Code agents and skills with your team. One command. No new platform. Just Git.
+
+## Installation
+
+Install and run skillsync with a single command — no global install required:
+
+```bash
+npx @manitmishra/skillsync
+```
+
+### Prerequisites
+
+- **Node.js 18+** or **Bun**
+- **GitHub CLI** (`gh`) — [install it here](https://cli.github.com)
+- Must be authenticated: run `gh auth login` if you haven't already
+
+## Quick Start
+
+The fastest way to get your team sharing skills:
+
+**1. Create a shared repo**
+
+```bash
+npx @manitmishra/skillsync create
+```
+
+This walks you through creating a GitHub repo, optionally inviting teammates, and selecting your best local skills and agents to seed it with.
+
+**2. Teammates join**
+
+```bash
+npx @manitmishra/skillsync join owner/repo-name
+```
+
+Clones the shared repo and symlinks all skills and agents into their local `~/.claude/` directories.
+
+**3. Stay in sync**
+
+```bash
+npx @manitmishra/skillsync sync
+```
+
+Pulls latest changes from the team repo and pushes any local updates. The background daemon does this automatically.
+
+## Commands
+
+All commands are run via `npx @manitmishra/skillsync <command>` or, if installed globally, `skillsync <command>`.
+
+### create
+
+Create a new shared team skills repository on GitHub.
+
+```bash
+skillsync create
+```
+
+Interactive prompts walk you through:
+
+- **Team name** — lowercase letters, numbers, and hyphens only
+- **GitHub org** — leave blank for a personal repo
+- **Visibility** — private (default) or public
+- **Collaborators** — comma-separated GitHub usernames to invite
+- **Initial skills** — select local skills and agents to seed the repo
+
+The command creates the GitHub repo, initializes it with `skills/` and `agents/` directories, commits your selected items, and starts the background sync daemon.
+
+> If something fails mid-creation, the CLI will tell you how to clean up with `gh repo delete`.
+
+### join
+
+Join an existing team skills repo.
+
+```bash
+skillsync join <owner/repo>
+```
+
+Clones the repo into `~/.skillsync/store/<owner>/<repo>/` and symlinks all skills and agents into your local `~/.claude/` directories. If a local file or directory would be overwritten, it's backed up to `.backup/` first — nothing is ever lost.
+
+If you've previously joined this repo, you'll be asked whether to re-clone from scratch.
+
+### sync
+
+Pull the latest updates and push local changes.
+
+```bash
+skillsync sync
+skillsync sync --repo owner/repo
+```
+
+Without `--repo`, syncs all joined repos sequentially. With `--repo`, syncs only that specific repo.
+
+**What happens during sync:**
+
+1. Local changes are auto-committed with the message `[skillsync] @username updated <skill-name>`
+2. Remote changes are pulled via rebase
+3. If there were local changes, they're pushed to the remote
+
+If a merge conflict occurs, sync aborts the rebase and tells you exactly how to resolve it manually.
+
+| Flag | Description |
+|------|-------------|
+| `--repo`, `-r` | Sync a specific repo only (`owner/repo` format) |
+
+### import
+
+Share local skills and agents into a joined team repo.
+
+```bash
+skillsync import
+```
+
+Interactive command that:
+
+1. Selects the target repo (auto-selects if you've only joined one)
+2. Verifies you have write access to the GitHub repo
+3. Shows a multiselect of your local skills and agents — nothing is pre-selected
+4. Copies selected items into the team repo
+5. Commits and pushes
+
+Only items that aren't already managed by skillsync are shown. This prevents accidental re-sharing of team items.
+
+### status
+
+Show current sync state, joined repos, and linked tools.
+
+```bash
+skillsync status
+```
+
+Displays:
+
+- Your GitHub username
+- Each joined repo with its team name, store path, last sync time, and linked skills/agents
+- Background daemon status — running PID and uptime, or not running with a hint to start it
+
+### delete
+
+Remove linked skills or agents from your local tool directories.
+
+```bash
+skillsync delete
+skillsync delete <name>
+skillsync delete --all
+skillsync delete --repo owner/repo
+```
+
+Removes skillsync-managed symlinks from `~/.claude/skills/` and `~/.claude/agents/`. If a backup exists from before skillsync linked the item, it's restored automatically.
+
+This only affects your local machine. It does **not** delete files from the shared GitHub repo.
+
+| Flag | Description |
+|------|-------------|
+| `<name>` | Delete a specific skill or agent by name |
+| `--all` | Delete all linked items |
+| `--repo` | Only delete items from a specific repo |
+
+### leave
+
+Leave a joined team repo and remove all its linked items.
+
+```bash
+skillsync leave
+skillsync leave <owner/repo>
+```
+
+Removes all symlinks for that repo, deletes the local store directory, and removes it from your config. The GitHub repo is **not** deleted — your teammates can keep using it.
+
+### destroy
+
+Fully remove a repo: unlink items, restore backups, delete local store, and optionally delete the GitHub repo.
+
+```bash
+skillsync destroy
+skillsync destroy <owner/repo>
+```
+
+This is the nuclear option. It:
+
+1. Removes all symlinks for the repo
+2. Restores any files that were backed up when links were created
+3. Deletes the local store directory
+4. Asks if you want to delete the GitHub repo itself (via `gh repo delete`)
+
+Every step requires confirmation. Nothing happens without your explicit approval.
+
+### daemon
+
+Manage the background sync daemon that watches for file changes.
+
+```bash
+skillsync daemon start
+skillsync daemon stop
+```
+
+**`daemon start`** — Spawns a background process that:
+
+- Watches `~/.skillsync/store/` for file changes (debounced by 10 seconds)
+- Polls for remote changes every 10 minutes
+- Auto-syncs when changes are detected
+
+The daemon starts automatically when you `create` or `join` a repo. If it dies, it's silently revived before most commands. Start it once, forget about it.
+
+**`daemon stop`** — Sends SIGTERM to the daemon process and cleans up.
+
+Logs are written to `~/.skillsync/daemon.log` and rotate automatically at ~1 MB.
+
+### check-git
+
+Verify your GitHub CLI installation and authentication.
+
+```bash
+skillsync check-git
+```
+
+Shows your `gh` version, authenticated user, auth method, protocol, and token details. Useful for debugging authentication issues.
+
+## Architecture
+
+### Store layout
+
+Each joined repo is cloned into a namespaced directory under `~/.skillsync/store/`:
+
+```
+~/.skillsync/
+  config.json
+  daemon.pid
+  daemon.log
+  store/
+    <owner>/
+      <repo>/
+        skills/
+          my-skill/
+        agents/
+          my-agent.md
+```
+
+### Symlink strategy
+
+Tool directories contain symlinks pointing into the store:
+
+```
+~/.claude/skills/my-skill     →  ~/.skillsync/store/owner/repo/skills/my-skill
+~/.claude/agents/my-agent.md  →  ~/.skillsync/store/owner/repo/agents/my-agent.md
+```
+
+This design gives you:
+
+- **One source of truth** — the store directory, backed by Git
+- **Zero duplication** — skills aren't copied, they're symlinked
+- **Multi-repo support** — different repos link different items with no path collisions
+- **Safe overwrites** — existing files are backed up to `.backup/` before linking
+
+### Sync flow
+
+```
+Local change detected
+  → auto-commit with [skillsync] message
+  → fetch remote
+  → rebase local on remote
+  → push to origin
+```
+
+On conflict, the rebase is aborted and you're given step-by-step instructions to resolve manually.
+
+## Configuration
+
+skillsync stores machine state in `~/.skillsync/config.json`:
+
+```json
+{
+  "username": "your-github-username",
+  "repos": {
+    "owner/repo": {
+      "repo": "owner/repo",
+      "team": "team-name",
+      "storePath": "/Users/you/.skillsync/store/owner/repo",
+      "linkedAt": "2025-01-15T10:30:00.000Z",
+      "lastSync": "2025-01-15T12:00:00.000Z"
+    }
+  }
+}
+```
+
+This file is managed entirely by skillsync. Don't edit it manually.
+
+The `lastSync` field only updates after a successful sync that included changes — a no-op sync (already up to date) does not advance the timestamp.
+
+## Troubleshooting
+
+### gh not found or not authenticated
+
+skillsync requires the GitHub CLI. Install it and authenticate:
+
+```bash
+brew install gh
+gh auth login
+```
+
+### Merge conflict during sync
+
+If `skillsync sync` reports a conflict:
+
+```bash
+cd ~/.skillsync/store/owner/repo
+git pull --rebase origin main
+# resolve conflicts in your editor
+git rebase --continue
+git push
+```
+
+### Symlink not created — collision
+
+If a skill name matches one already linked from another joined repo, skillsync skips it to avoid conflicts. Run `skillsync status` to see which repo owns each linked item.
+
+### Daemon not starting
+
+Check the daemon log for details:
+
+```bash
+cat ~/.skillsync/daemon.log
+```
+
+Common causes: `gh` not authenticated, store directory permissions, or a port conflict.
+
+### Store path already exists on create
+
+A previous `create` or `join` left a store directory behind. Either run `skillsync leave` to cleanly remove the old repo, or manually delete the directory at the path shown in the error.

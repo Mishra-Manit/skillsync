@@ -1,12 +1,12 @@
 const ROW_1 = [
   {
     title: "One-command sync",
-    desc: "Run bunx skillsync sync and every shared agent, skill, and workflow on your machine updates instantly. No git pull, no manual copying.",
+    desc: "Run skillsync sync. Every agent, skill, and workflow updates instantly. No git pull, no manual copying.",
     border: "border-t border-r border-b border-border",
   },
   {
     title: "GitHub-backed",
-    desc: "Your team\u2019s skills live in a standard GitHub repository. Version history, access control, and code review \u2014 tools you already know.",
+    desc: "Skills live in a GitHub repo. Version history, access control, and code review come for free.",
     border: "border-t border-b border-border",
   },
 ] as const;
@@ -14,17 +14,17 @@ const ROW_1 = [
 const ROW_2 = [
   {
     title: "Symlink-based",
-    desc: "Skills are symlinked into your ~/.claude directory \u2014 not copied. One source of truth, zero duplication, instant updates across every project.",
+    desc: "Symlinked into ~/.claude, not copied. One source of truth, zero duplication.",
     border: "border-b border-r border-border",
   },
   {
     title: "Daemon auto-sync",
-    desc: "Start the background daemon and forget about it. File changes are watched and synced automatically \u2014 your team always has the latest version.",
+    desc: "A background daemon watches for changes and syncs automatically. Start it once, forget about it.",
     border: "border-b border-r border-border",
   },
   {
     title: "Team management",
-    desc: "Join multiple team repos, leave when you want, or destroy a repo entirely. Full lifecycle management with clear, reversible commands.",
+    desc: "Join, leave, import, delete, destroy. Every action is reversible, every command has a confirmation step.",
     border: "border-b border-border",
   },
 ] as const;
@@ -54,7 +54,7 @@ export function Features() {
           Features
         </span>
         <h2 className="max-w-[800px] font-serif text-5xl font-normal leading-[1.1] tracking-[-2px] text-fg">
-          Everything a team needs, nothing it doesn&apos;t
+          No new platform. Just Git.
         </h2>
       </div>
 

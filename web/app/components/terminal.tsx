@@ -8,17 +8,36 @@ export function Terminal() {
       </div>
 
       <div className="flex flex-col gap-1.5 px-5 pb-5 pt-4">
-        <p className="font-mono text-[13px] text-subtle">
-          $ bunx skillsync create
+        <p className="font-mono text-[13px] text-[#BFC5CC]">
+          $ npx @manitmishra/skillsync create
         </p>
-        <p className="font-mono text-[13px] text-accent">
-          &nbsp;&nbsp;Creating team repository...
+        <p className="font-mono text-[13px] text-[#ECEFF2]">
+          &nbsp;&nbsp;<span className="font-semibold">skillsync create</span>
         </p>
-        <p className="font-mono text-[13px] text-accent">
-          &nbsp;&nbsp;Linked 3 skills, 2 agents
+        <p className="font-mono text-[13px] text-[#BFC5CC]">
+          &nbsp;&nbsp;Authenticated as @you
         </p>
-        <p className="font-mono text-[13px] text-subtle">
-          &nbsp;&nbsp;Your team is ready to sync.
+        <p className="font-mono text-[13px] text-[#BFC5CC]">&nbsp;</p>
+        <p className="font-mono text-[13px] text-[#A7D4B2]">
+          &nbsp;&nbsp;+ design-system-agent
+        </p>
+        <p className="font-mono text-[13px] text-[#A7D4B2]">
+          &nbsp;&nbsp;+ code-review
+        </p>
+        <p className="font-mono text-[13px] text-[#A7D4B2]">
+          &nbsp;&nbsp;+ api-patterns
+        </p>
+        <p className="font-mono text-[13px] text-[#BFC5CC]">&nbsp;</p>
+        <p className="font-mono text-[13px] text-[#ECEFF2]">
+          &nbsp;&nbsp;<span className="font-semibold">Share this command with your
+          team:</span>
+        </p>
+        <p className="font-mono text-[13px] text-[#A7D4B2]">
+          &nbsp;&nbsp;&nbsp;&nbsp;npx @manitmishra/skillsync join acme/acme-skills
+        </p>
+        <p className="font-mono text-[13px] text-[#BFC5CC]">&nbsp;</p>
+        <p className="font-mono text-[13px] text-[#BFC5CC]">
+          &nbsp;&nbsp;Created acme/acme-skills with 3 shared items.
         </p>
       </div>
     </div>

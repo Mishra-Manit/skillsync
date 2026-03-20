@@ -22,6 +22,11 @@ export const metadata: Metadata = {
   title: "skillsync",
   description:
     "Share and sync Claude Code agents and skills with your team.",
+  icons: {
+    icon: "/icon.svg",
+    shortcut: "/icon.svg",
+    apple: "/icon.svg",
+  },
 };
 
 export default function RootLayout({

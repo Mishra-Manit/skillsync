@@ -2,17 +2,17 @@ const STEPS = [
   {
     num: "01",
     title: "Create a shared repo",
-    desc: "One command sets up a GitHub repository as your team\u2019s single source of truth for Claude Code configurations.",
+    desc: "One command creates a GitHub repo, invites teammates, and seeds it with your best skills.",
   },
   {
     num: "02",
     title: "Import your best work",
-    desc: "Select the agents, skills, and workflows you want to share. Nothing is shared by default \u2014 you choose what goes to the team.",
+    desc: "Choose which agents and skills to share. Nothing is exported by default.",
   },
   {
     num: "03",
     title: "Everyone stays in sync",
-    desc: "Teammates join with a single command. A background daemon keeps everything current \u2014 no manual pulling, no merge headaches.",
+    desc: "Teammates run skillsync join and get everything. A background daemon keeps it current.",
   },
 ] as const;
 
@@ -24,13 +24,12 @@ export function ProblemSolution() {
           The Problem
         </span>
         <h2 className="font-serif text-5xl font-normal leading-[1.1] tracking-[-2px] text-fg">
-          Your best prompts die in personal dotfiles
+          Team knowledge trapped on individual machines
         </h2>
         <p className="font-sans text-base leading-[1.6] text-muted">
-          Every developer on your team builds Claude Code agents and skills
-          independently. The result: duplicated effort, inconsistent quality, and
-          tribal knowledge locked in individual machines. When someone leaves,
-          their workflows leave with them.
+          Agents and skills live in local dotfiles with no built-in way to share
+          them. Teams duplicate work, new hires start from zero, and hard-won
+          workflows disappear when people move on.
         </p>
       </div>
 

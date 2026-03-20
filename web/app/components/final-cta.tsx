@@ -35,7 +35,7 @@ export function FinalCta() {
       <div className="flex items-center gap-2.5 rounded-3xl bg-accent px-7 py-4">
         <TerminalIcon />
         <span className="font-mono text-sm font-medium text-white">
-          bunx skillsync create
+          npx @manitmishra/skillsync create
         </span>
       </div>
 
