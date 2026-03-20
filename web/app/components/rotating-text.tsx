@@ -9,23 +9,21 @@ const WORDS = [
   2000,
   "twitter fans",
   2000,
-  "annoying boss",
+  "colleagues",
   2000,
 ] as const;
 
 export function RotatingText() {
   return (
-    <span className="rotating-text-wrapper">
-      <TypeAnimation
-        sequence={[...WORDS]}
-        wrapper="span"
-        speed={45}
-        deletionSpeed={65}
-        repeat={Infinity}
-        cursor={false}
-        className="rotating-text"
-        preRenderFirstString={true}
-      />
-    </span>
+    <TypeAnimation
+      sequence={[...WORDS]}
+      wrapper="span"
+      speed={45}
+      deletionSpeed={65}
+      repeat={Infinity}
+      cursor={true}
+      className="rotating-text"
+      preRenderFirstString={true}
+    />
   );
 }

@@ -24,25 +24,15 @@ body {
 }
 
 /* Rotating text typewriter */
-.rotating-text-wrapper {
-  position: relative;
-  display: inline;
-}
-
 .rotating-text {
   color: var(--color-accent);
   font-style: italic;
 }
 
-.rotating-text-wrapper::after {
-  content: "";
-  display: inline-block;
-  width: 2px;
-  height: 1.1em;
-  margin-left: 2px;
-  vertical-align: text-bottom;
-  background: var(--color-accent);
-  animation: cursor-fade 0.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+.rotating-text::after {
+  content: "|" !important;
+  color: var(--color-accent);
+  animation: cursor-fade 0.8s cubic-bezier(0.4, 0, 0.6, 1) infinite !important;
 }
 
 @keyframes cursor-fade {
@@ -51,8 +41,8 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .rotating-text-wrapper::after {
-    animation: none;
+  .rotating-text::after {
+    animation: none !important;
     opacity: 1;
   }
 }
