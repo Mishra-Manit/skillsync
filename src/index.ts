@@ -18,7 +18,7 @@ if (!isDaemonStop) {
   await reviveDaemonIfNeeded()
 }
 
-const cli = new Crust('skillsync-cli')
+const cli = new Crust('skillsync')
   .meta({ description: 'Share and sync Claude Code agents and skills with your team' })
   .use(versionPlugin('0.1.0'))
   .use(autoCompletePlugin({ mode: 'help' }))
