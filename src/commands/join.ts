@@ -9,6 +9,7 @@ import { readConfig, addRepo } from '../lib/config'
 import { cloneRepo, CloneError } from '../lib/git'
 import { linkAllFromStore } from '../lib/placer'
 import { ui } from '../lib/ui'
+import { ensureDaemonRunning } from './daemon'
 
 const slugPattern = /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/
 
@@ -87,5 +88,8 @@ export async function runJoin(repo: string): Promise<void> {
     style.bold(`Joined ${repo}`) +
       style.dim(` -- ${linked} linked, ${backedUp} backed up, ${skipped} skipped`),
   )
+  ui.blank()
+
+  await ensureDaemonRunning()
   ui.blank()
 }
