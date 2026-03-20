@@ -10,7 +10,7 @@ export type WatcherHandle = {
 }
 
 const DEBOUNCE_MS = 10000
-const POLL_INTERVAL_MS = 60_000
+const POLL_INTERVAL_MS = 10 * 60 * 1000 // 10 minutes
 const STORE_ROOT = join(homedir(), '.skillsync', 'store')
 
 function extractRepoSlug(filePath: string): string | null {

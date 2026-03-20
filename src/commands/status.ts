@@ -5,6 +5,7 @@ import { detectGh } from '../lib/github'
 import { readConfig, type RepoConfig } from '../lib/config'
 import { listLinkedDetailed, type LinkedItem } from '../lib/placer'
 import { ui } from '../lib/ui'
+import { getDaemonInfo } from './daemon'
 
 // --- Helpers ---
 
@@ -88,6 +89,19 @@ async function printRepoBlock(slug: string, repo: RepoConfig, items: readonly Li
   }
 }
 
+// --- Daemon section ---
+
+function printDaemonStatus(): void {
+  const daemon = getDaemonInfo()
+  ui.blank()
+  if (daemon.running) {
+    ui.success(`Daemon running (pid ${daemon.pid}${daemon.uptime ? `, up ${daemon.uptime}` : ''})`)
+  } else {
+    ui.hint('Daemon not running. Start with `skillsync daemon start`.')
+  }
+  ui.blank()
+}
+
 // --- Main ---
 
 export async function runStatus(): Promise<void> {
@@ -100,7 +114,7 @@ export async function runStatus(): Promise<void> {
     ui.blank()
     ui.hint('Not initialized.')
     ui.hint('Run `skillsync join <owner/repo>` or `skillsync create` to get started.')
-    ui.blank()
+    printDaemonStatus()
     return
   }
 
@@ -125,5 +139,5 @@ export async function runStatus(): Promise<void> {
     }
   }
 
-  ui.blank()
+  printDaemonStatus()
 }

@@ -60,7 +60,7 @@ Rules:
 
 ## Current Scope
 
-Current commands: `create`, `join`, `sync`, `status`, `import`, `check-git`, `delete`, `leave`, `destroy`, `daemon start|stop|status`.
+Current commands: `create`, `join`, `sync`, `status`, `import`, `check-git`, `delete`, `leave`, `destroy`, `daemon start|stop`.
 
 Do not implement multi-target placement (codex/cursor) or automatic merge conflict resolution yet. On sync conflict, fail loudly with a clear error and tell the user to resolve manually.
 
