@@ -68,3 +68,24 @@ export function exitRepoNotFound(slug: string): never {
   fatal(`Repo "${slug}" is not in your joined repos.`, 'Run `skillsync status` to see joined repos.')
 }
 
+export async function resolveRepo(
+  config: Config,
+  arg: string | undefined,
+  promptMessage: string,
+): Promise<RepoConfig> {
+  if (arg) {
+    if (!config.repos[arg]) exitRepoNotFound(arg)
+    return config.repos[arg]
+  }
+
+  const entries = Object.values(config.repos)
+
+  if (entries.length === 0) exitNoReposJoined()
+  if (entries.length === 1) return entries[0]!
+
+  const { select } = await import('@crustjs/prompts')
+  const choices = entries.map((r) => ({ label: r.repo, value: r.repo }))
+  const picked = await select({ message: promptMessage, choices })
+  return config.repos[picked as string]!
+}
+

@@ -4,6 +4,7 @@ import { helpPlugin, versionPlugin, autoCompletePlugin } from '@crustjs/plugins'
 import { runCreate } from './commands/create'
 import { runJoin } from './commands/join'
 import { runSync } from './commands/sync'
+import { runDaemonStart, runDaemonStop } from './commands/daemon'
 import { runStatus } from './commands/status'
 import { runImport } from './commands/import'
 import { runCheckGit } from './commands/check-git'
@@ -26,16 +27,24 @@ const cli = new Crust('skillsync')
       .run((ctx) => runJoin(ctx.args.repo))
   )
   .command('sync', (cmd) =>
-    cmd.meta({ description: 'Pull and push skill updates' }).run(runSync)
+    cmd
+      .meta({ description: 'Pull and push skill updates' })
+      .flags({
+        repo: { type: 'string', short: 'r', description: 'Target repo (owner/repo)' },
+      })
+      .run((ctx) => runSync(ctx.flags))
   )
   .command('status', (cmd) =>
     cmd.meta({ description: 'Show current sync state' }).run(runStatus)
   )
   .command('import', (cmd) =>
     cmd
-      .meta({ description: 'Import a local skill into the team repo' })
+      .meta({ description: 'Import a local skill or agent into the team repo' })
       .args([{ name: 'path', type: 'string', required: true }] as const)
-      .run((ctx) => runImport(ctx.args.path))
+      .flags({
+        repo: { type: 'string', description: 'Target repo (owner/repo)' },
+      })
+      .run((ctx) => runImport(ctx.args.path, ctx.flags))
   )
   .command('check-git', (cmd) =>
     cmd.meta({ description: 'Check gh CLI version and authentication status' }).run(runCheckGit)
@@ -61,6 +70,16 @@ const cli = new Crust('skillsync')
       .meta({ description: 'Remove a repo: restore backups, delete store, optionally delete GitHub repo' })
       .args([{ name: 'repo', type: 'string' }] as const)
       .run((ctx) => runDestroy(ctx.args.repo))
+  )
+  .command('daemon', (cmd) =>
+    cmd
+      .meta({ description: 'Manage background sync daemon' })
+      .command('start', (sub) =>
+        sub.meta({ description: 'Start background sync daemon' }).run(runDaemonStart),
+      )
+      .command('stop', (sub) =>
+        sub.meta({ description: 'Stop background sync daemon' }).run(runDaemonStop),
+      ),
   )
 
 await cli.execute()

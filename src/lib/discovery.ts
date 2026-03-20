@@ -10,12 +10,12 @@ export type DiscoveredSkill = {
   type: 'skill' | 'agent'
 }
 
-type Frontmatter = {
+export type Frontmatter = {
   name?: string
   description?: string
 }
 
-function parseFrontmatter(content: string): Frontmatter {
+export function parseFrontmatter(content: string): Frontmatter {
   const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/)
   if (!match) return {}
 
