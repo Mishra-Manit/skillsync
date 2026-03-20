@@ -20,9 +20,9 @@ export function FinalCta() {
   return (
     <section
       id="get-started"
-      className="flex flex-col items-center gap-7 bg-bg px-[120px] py-20"
+      className="flex flex-col items-center gap-7 bg-bg px-5 py-12 md:px-[120px] md:py-20"
     >
-      <h2 className="text-center font-serif text-[40px] font-normal leading-[1.1] tracking-[-0.5px] text-fg">
+      <h2 className="text-center font-serif text-3xl font-normal leading-[1.1] tracking-[-0.5px] text-fg md:text-[40px]">
         Ready to sync
         <br />
         your team?
@@ -32,9 +32,9 @@ export function FinalCta() {
         Get started in under a minute. No account required.
       </p>
 
-      <div className="flex items-center gap-2.5 rounded-3xl bg-accent px-7 py-4">
+      <div className="flex max-w-full items-center gap-2.5 rounded-3xl bg-accent px-4 py-4 md:px-7">
         <TerminalIcon />
-        <span className="font-mono text-sm font-medium text-white">
+        <span className="font-mono text-xs font-medium text-white md:text-sm">
           npm install -g @manitmishra/skillsync
         </span>
       </div>

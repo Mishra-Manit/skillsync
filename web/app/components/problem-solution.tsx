@@ -18,12 +18,12 @@ const STEPS = [
 
 export function ProblemSolution() {
   return (
-    <section id="how-it-works" className="flex flex-col gap-16 p-20">
+    <section id="how-it-works" className="flex flex-col gap-10 p-5 md:gap-16 md:p-20">
       <div className="flex max-w-[800px] flex-col gap-4">
         <span className="font-sans text-[13px] font-medium uppercase tracking-[1px] text-muted">
           The Problem
         </span>
-        <h2 className="font-serif text-5xl font-normal leading-[1.1] tracking-[-2px] text-fg">
+        <h2 className="font-serif text-3xl font-normal leading-[1.1] tracking-[-1px] text-fg md:text-5xl md:tracking-[-2px]">
           Team knowledge trapped on individual machines
         </h2>
         <p className="font-sans text-base leading-[1.6] text-muted">
@@ -33,13 +33,13 @@ export function ProblemSolution() {
         </p>
       </div>
 
-      <div className="flex gap-12">
+      <div className="flex flex-col gap-8 md:flex-row md:gap-12">
         {STEPS.map((step) => (
           <div
             key={step.num}
             className="flex flex-1 flex-col gap-3 border-b border-border pb-8"
           >
-            <span className="font-serif text-5xl font-normal tracking-[-2px] text-light">
+            <span className="font-serif text-3xl font-normal tracking-[-2px] text-light md:text-5xl">
               {step.num}
             </span>
             <span className="font-sans text-base font-semibold text-fg">

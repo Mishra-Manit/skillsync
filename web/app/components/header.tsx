@@ -1,18 +1,18 @@
 export function Header() {
   return (
-    <header className="flex items-center justify-between px-20 py-5">
+    <header className="flex items-center justify-between px-5 py-5 md:px-20">
       <span className="font-serif text-[22px] font-medium tracking-[-0.5px] text-fg">
         skillsync
       </span>
 
       <nav className="flex items-center gap-9">
-        <a href="#features" className="font-sans text-sm text-muted">
+        <a href="#features" className="hidden font-sans text-sm text-muted md:block">
           Features
         </a>
-        <a href="#how-it-works" className="font-sans text-sm text-muted">
+        <a href="#how-it-works" className="hidden font-sans text-sm text-muted md:block">
           How It Works
         </a>
-        <a href="/docs" className="font-sans text-sm text-muted">
+        <a href="/docs" className="hidden font-sans text-sm text-muted md:block">
           Docs
         </a>
         <a

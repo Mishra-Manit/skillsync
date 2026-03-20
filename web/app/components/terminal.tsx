@@ -1,13 +1,13 @@
 export function Terminal() {
   return (
-    <div className="w-[600px] overflow-hidden rounded-2xl border border-border bg-terminal">
+    <div className="w-full max-w-[600px] overflow-hidden rounded-2xl border border-border bg-terminal">
       <div className="flex items-center gap-2 px-4 py-3">
         <span className="h-2.5 w-2.5 rounded-full bg-border" />
         <span className="h-2.5 w-2.5 rounded-full bg-border" />
         <span className="h-2.5 w-2.5 rounded-full bg-border" />
       </div>
 
-      <div className="flex flex-col gap-1.5 px-5 pb-5 pt-4">
+      <div className="flex flex-col gap-1.5 overflow-x-auto px-5 pb-5 pt-4">
         <p className="font-mono text-[13px] text-[#BFC5CC]">
           $ skillsync create
         </p>
