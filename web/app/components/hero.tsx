@@ -42,7 +42,7 @@ export function Hero() {
         </span>
       </div>
 
-      <h1 className="text-center font-serif text-3xl font-normal leading-[1.15] tracking-[-1px] text-fg md:text-5xl">
+      <h1 className="overflow-visible text-center font-serif text-3xl font-normal leading-[1.3] tracking-[-1px] text-fg md:leading-[1.15] md:text-5xl">
         Share your Claude Code
         <br />
         skills with your <RotatingText />
