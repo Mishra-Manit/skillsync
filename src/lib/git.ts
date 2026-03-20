@@ -81,3 +81,103 @@ export function push(repoPath: string): void {
     throw new GitError('push', result.stderr.toString().trim())
   }
 }
+
+export class SyncConflictError extends GitError {
+  constructor(detail: string) {
+    super('pull --rebase', detail)
+    this.name = 'SyncConflictError'
+  }
+}
+
+export function hasChanges(repoPath: string): boolean {
+  const result = Bun.spawnSync(['git', 'status', '--porcelain'], {
+    cwd: repoPath,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+
+  if (!result.success) {
+    throw new GitError('status', result.stderr.toString().trim())
+  }
+
+  return result.stdout.toString().trim().length > 0
+}
+
+export function getDefaultBranch(repoPath: string): string {
+  const result = Bun.spawnSync(['git', 'symbolic-ref', 'refs/remotes/origin/HEAD'], {
+    cwd: repoPath,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+
+  if (!result.success) return 'main'
+
+  const ref = result.stdout.toString().trim()
+  return ref.replace('refs/remotes/origin/', '')
+}
+
+export function pullRebase(repoPath: string): void {
+  const branch = getDefaultBranch(repoPath)
+  const result = Bun.spawnSync(['git', 'pull', '--rebase', 'origin', branch], {
+    cwd: repoPath,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+
+  if (result.success) return
+
+  const stderr = result.stderr.toString().trim()
+
+  // Abort the rebase if it's in progress, then throw conflict error
+  if (stderr.includes('CONFLICT') || stderr.includes('could not apply')) {
+    Bun.spawnSync(['git', 'rebase', '--abort'], {
+      cwd: repoPath,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    throw new SyncConflictError(stderr)
+  }
+
+  throw new GitError('pull --rebase', stderr)
+}
+
+export function getChangedFiles(repoPath: string): string[] {
+  // Diff working tree + staged against HEAD (used before committing)
+  const result = Bun.spawnSync(['git', 'diff', '--name-only', 'HEAD'], {
+    cwd: repoPath,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+
+  if (!result.success) return []
+
+  return result.stdout
+    .toString()
+    .trim()
+    .split('\n')
+    .filter((line) => line.length > 0)
+}
+
+export function hasRemoteChanges(repoPath: string): boolean {
+  const fetchResult = Bun.spawnSync(['git', 'fetch', 'origin'], {
+    cwd: repoPath,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+
+  if (!fetchResult.success) return false
+
+  const branch = getDefaultBranch(repoPath)
+  const countResult = Bun.spawnSync(
+    ['git', 'rev-list', '--count', `HEAD..origin/${branch}`],
+    {
+      cwd: repoPath,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+  )
+
+  if (!countResult.success) return false
+
+  return parseInt(countResult.stdout.toString().trim(), 10) > 0
+}

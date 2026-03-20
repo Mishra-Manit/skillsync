@@ -148,6 +148,12 @@ async function scanStoreDir(
   }
 }
 
+export async function getOwnedItems(storePath: string): Promise<LinkedItem[]> {
+  const allLinked = await listLinkedDetailed()
+  const prefix = storePath.endsWith('/') ? storePath : storePath + '/'
+  return allLinked.filter((item) => item.resolvedStorePath.startsWith(prefix))
+}
+
 export async function linkAllFromStore(storePath: string): Promise<LinkResultEntry[]> {
   const claudeDir = join(homedir(), '.claude')
 
