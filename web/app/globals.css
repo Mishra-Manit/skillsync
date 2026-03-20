@@ -22,3 +22,37 @@ body {
   background: var(--color-bg);
   color: var(--color-fg);
 }
+
+/* Rotating text typewriter */
+.rotating-text-wrapper {
+  position: relative;
+  display: inline;
+}
+
+.rotating-text {
+  color: var(--color-accent);
+  font-style: italic;
+}
+
+.rotating-text-wrapper::after {
+  content: "";
+  display: inline-block;
+  width: 2px;
+  height: 1.1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: var(--color-accent);
+  animation: cursor-fade 0.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes cursor-fade {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rotating-text-wrapper::after {
+    animation: none;
+    opacity: 1;
+  }
+}

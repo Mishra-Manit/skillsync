@@ -1,3 +1,4 @@
+import { RotatingText } from "./rotating-text";
 import { Terminal } from "./terminal";
 
 function NpmIcon() {
@@ -44,7 +45,7 @@ export function Hero() {
       <h1 className="text-center font-serif text-5xl font-normal leading-[1.15] tracking-[-1px] text-fg">
         Share your Claude Code
         <br />
-        skills with your team
+        skills with your <RotatingText />
       </h1>
 
       <p className="text-center font-sans text-[17px] leading-[1.6] text-muted">
