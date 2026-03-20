@@ -45,12 +45,8 @@ const cli = new Crust('skillsync-cli')
   )
   .command('import', (cmd) =>
     cmd
-      .meta({ description: 'Import a local skill or agent into the team repo' })
-      .args([{ name: 'path', type: 'string', required: true }] as const)
-      .flags({
-        repo: { type: 'string', description: 'Target repo (owner/repo)' },
-      })
-      .run((ctx) => runImport(ctx.args.path, ctx.flags))
+      .meta({ description: 'Interactively import local skills/agents into a joined repo' })
+      .run(() => runImport())
   )
   .command('check-git', (cmd) =>
     cmd.meta({ description: 'Check gh CLI version and authentication status' }).run(runCheckGit)

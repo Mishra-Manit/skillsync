@@ -48,13 +48,13 @@ Rules:
 
 **Symlink ownership**: `placer.ts` only touches symlinks it created. It will never overwrite a real directory — it backs it up to `.backup/` first and notifies the user.
 
-**Import flow default**: nothing is selected by default in the skill multiselect. The user explicitly opts in. This prevents accidental sharing of personal skills.
+**Import flow**: `import` is interactive. It resolves a target joined repo (auto if one joined, otherwise prompt), verifies write access through `gh`, then shows a multiselect of local skills/agents with nothing selected by default. This prevents accidental sharing of personal items.
 
 **gh CLI detection**: `github.ts` shells out to `gh auth status` to detect if the user is authenticated. `gh` is a hard requirement: if `gh` is unavailable or unauthenticated, exit with a clear error and tell the user to run `gh auth login`.
 
 **Store location**: each joined repo is cloned into `~/.skillsync/store/<owner>/<repo>/` — one namespaced subdirectory per team repo. Tool directories (`~/.claude/skills/`, etc.) contain symlinks pointing into the relevant store subdirectory. This means a user can be joined to multiple team repos simultaneously without any path collision.
 
-**Config format**: local machine state lives at `~/.skillsync/config.json` (managed by `@crustjs/store`). It holds a `username` string and a `repos` map keyed by repo slug (`"owner/repo"`), where each entry is a `RepoConfig` object (`{ repo, team, storePath, linkedAt, lastSync }`). `import` resolves a single target repo (auto if one joined, otherwise prompt unless `--repo` is passed). `sync` uses `--repo <owner/repo>` for one repo or, with no flag, processes all joined repos sequentially.
+**Config format**: local machine state lives at `~/.skillsync/config.json` (managed by `@crustjs/store`). It holds a `username` string and a `repos` map keyed by repo slug (`"owner/repo"`), where each entry is a `RepoConfig` object (`{ repo, team, storePath, linkedAt, lastSync }`). `import` resolves a single target repo (auto if one joined, otherwise prompt). `sync` uses `--repo <owner/repo>` for one repo or, with no flag, processes all joined repos sequentially.
 
 **Commit messages**: auto-commits follow the format `[skillsync] @username updated <skill-name>`. Never prompt the user for a commit message.
 

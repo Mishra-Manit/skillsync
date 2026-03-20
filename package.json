@@ -1,6 +1,6 @@
 {
-  "name": "skillsync-cli",
-  "version": "0.1.0",
+  "name": "@manitmishra/skillsync",
+  "version": "0.1.4",
   "description": "Share and sync Claude Code agents and skills with your team",
   "license": "MIT",
   "author": "Manit Mishra",
@@ -15,9 +15,10 @@
   },
   "type": "module",
   "bin": {
-    "skillsync-cli": "./dist/index.js"
+    "skillsync": "./bin/skillsync-cli"
   },
   "files": [
+    "bin",
     "dist"
   ],
   "scripts": {

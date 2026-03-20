@@ -205,3 +205,42 @@ export function inviteCollaborator(
   const stderr = result.stderr.toString().trim()
   return { target: usernameOrEmail, result: 'error', detail: stderr }
 }
+
+type RepoPermissionResponse = {
+  viewerPermission?: string
+}
+
+const WRITE_PERMISSIONS = new Set(['ADMIN', 'MAINTAIN', 'WRITE'])
+
+export function ensureRepoWriteAccess(repoSlug: string): void {
+  const result = Bun.spawnSync(
+    ['gh', 'repo', 'view', repoSlug, '--json', 'viewerPermission'],
+    { stdout: 'pipe', stderr: 'pipe' },
+  )
+
+  if (!result.success) {
+    const detail = result.stderr.toString().trim()
+    fatal(
+      `Could not verify write access for ${repoSlug}.`,
+      detail || 'Run `gh repo view <owner/repo> --json viewerPermission` manually to inspect access.',
+    )
+  }
+
+  let permission = ''
+  try {
+    const parsed = JSON.parse(result.stdout.toString()) as RepoPermissionResponse
+    permission = (parsed.viewerPermission ?? '').toUpperCase()
+  } catch {
+    fatal(
+      `Could not read permission data for ${repoSlug}.`,
+      'Try again after running `gh auth refresh`.',
+    )
+  }
+
+  if (WRITE_PERMISSIONS.has(permission)) return
+
+  fatal(
+    `You do not have write access to ${repoSlug}.`,
+    `Current permission: ${permission || 'unknown'}. Ask a repo admin for write access.`,
+  )
+}

@@ -1,11 +1,11 @@
-# skillsync-cli
+# skillsync
 
 Share and sync Claude Code agents and skills across a dev team via a GitHub repo.
 
 ## Install
 
 ```bash
-bunx skillsync-cli
+npm install -g @manitmishra/skillsync
 ```
 
 ## Requirements
@@ -18,7 +18,7 @@ bunx skillsync-cli
 **One person creates the shared repo:**
 
 ```bash
-bunx skillsync-cli create
+skillsync create
 ```
 
 This creates a GitHub repo with `skills/` and `agents/` folders and pushes the initial structure.
@@ -28,16 +28,22 @@ This creates a GitHub repo with `skills/` and `agents/` folders and pushes the i
 **Teammates join:**
 
 ```bash
-bunx skillsync-cli join <owner/repo>
+skillsync join <owner/repo>
 ```
 
 This clones the repo into `~/.skillsync/store/<owner>/<repo>/` and creates symlinks in `~/.claude/skills/` and `~/.claude/agents/`.
 
-**Import your existing skills or agents:**
+**Team members can import their existing skills or agents:**
 
 ```bash
-bunx skillsync-cli import ~/.claude/skills/my-skill
+skillsync import
 ```
+
+Import flow:
+- If you're in multiple repos, choose which one to import into
+- Verify you have write access to that repo
+- Pick one or more local skills/agents from a multiselect (default: none selected)
+- Copy selected items into the repo store, link them locally, then commit + push
 
 ## Commands
 
@@ -46,7 +52,7 @@ bunx skillsync-cli import ~/.claude/skills/my-skill
 | `create` | Create a shared team skills repo on GitHub |
 | `join <owner/repo>` | Clone a team repo and link its skills and agents |
 | `sync [--repo owner/repo]` | Pull remote changes and push local ones (git pull --rebase + push) |
-| `import <path>` | Copy a local skill or agent into the shared repo and push |
+| `import` | Interactively select local skills/agents to copy into a joined repo, then push |
 | `status` | Show joined repos, linked items, daemon state, and last sync time |
 | `delete [name]` | Remove symlinks for a skill or agent (restores backups if present) |
 | `leave [repo]` | Leave a repo: remove all its symlinks and delete the local store |
@@ -62,7 +68,7 @@ Each joined repo is cloned to `~/.skillsync/store/<owner>/<repo>/`. Symlinks in 
 
 **Symlinks**
 
-`join` creates symlinks for every item in the shared repo's `skills/` and `agents/` directories. If a real directory already exists at a target path, it is backed up to `.backup/` before the symlink is created. `delete` and `leave` restore backups automatically.
+`join` creates symlinks for every item in the shared repo's `skills/` and `agents/` directories. If a real directory already exists at a target path, it is backed up to `.backup/` before the symlink is created. `delete`, `leave`, and `destroy` restore backups automatically.
 
 **Daemon**
 

@@ -1,58 +1,47 @@
 import { style } from '@crustjs/style'
-import { spinner } from '@crustjs/prompts'
-import { stat, readFile, access, cp, mkdir } from 'fs/promises'
+import { multiselect, spinner } from '@crustjs/prompts'
+import { access, cp, mkdir } from 'fs/promises'
 import { homedir } from 'os'
-import { join, basename, resolve } from 'path'
+import { join } from 'path'
 import { fatal } from '../lib/errors'
-import { detectGh } from '../lib/github'
+import { detectGh, ensureRepoWriteAccess } from '../lib/github'
 import { readConfig, exitNoReposJoined, resolveRepo } from '../lib/config'
 import { commitAll, push, GitError } from '../lib/git'
 import { linkSkill } from '../lib/placer'
-import { parseFrontmatter } from '../lib/discovery'
+import { discoverLocalSkills } from '../lib/discovery'
 import { ui } from '../lib/ui'
 
-// --- Helpers ---
-
-async function detectItemType(path: string): Promise<'skill' | 'agent'> {
-  let info
-  try {
-    info = await stat(path) // stat follows symlinks; lstat would misdetect symlink-to-dir
-  } catch (err: unknown) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') fatal(`Path not found: ${path}`)
-    throw err
-  }
-
-  if (info.isDirectory()) return 'skill'
-  if (info.isFile() && path.endsWith('.md')) return 'agent'
-
-  fatal(
-    `"${path}" is not a skill directory or agent .md file.`,
-    'Skills are directories (optionally containing SKILL.md). Agents are .md files.',
-  )
+type ImportPlan = {
+  name: string
+  sourcePath: string
+  type: 'skill' | 'agent'
+  destDir: string
+  dest: string
+  linkTarget: string
 }
 
 function sanitizeName(raw: string): string {
-  return raw
+  const result = raw
     .trim()
-    .replace(/\s+/g, '-')           // spaces → hyphens
-    .replace(/[/\\\0<>:|?*]/g, '')  // strip path/shell-unsafe chars
-    .replace(/^\.+/, '')            // no leading dots (hidden files)
-    .replace(/-{2,}/g, '-')         // collapse consecutive hyphens
-    .replace(/^-+|-+$/g, '')        // trim leading/trailing hyphens
+    .replace(/\s+/g, '-')
+    .replace(/[/\\\0<>:|?*]/g, '')
+    .replace(/^\.+/, '')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '')
+
+  if (!result) {
+    fatal(
+      `Cannot derive a safe name from "${raw}".`,
+      'Rename the local skill/agent directory so it contains at least one alphanumeric character.',
+    )
+  }
+
+  return result
 }
 
-async function parseName(path: string, itemType: 'skill' | 'agent'): Promise<string> {
-  const fallbackName = itemType === 'skill' ? basename(path) : basename(path, '.md')
-  const mdPath = itemType === 'skill' ? join(path, 'SKILL.md') : path
-
-  try {
-    const content = await readFile(mdPath, 'utf8')
-    const fm = parseFrontmatter(content)
-    const raw = fm.name || fallbackName
-    return sanitizeName(raw) || fallbackName
-  } catch {
-    return fallbackName
-  }
+function buildChoiceLabel(name: string, type: 'skill' | 'agent'): string {
+  const suffix = type === 'agent' ? style.dim(' (agent)') : ''
+  return `${name}${suffix}`
 }
 
 async function guardNoDuplicate(dest: string, name: string, repoSlug: string, destDir: string): Promise<void> {
@@ -69,70 +58,111 @@ async function guardNoDuplicate(dest: string, name: string, repoSlug: string, de
 
 // --- Main ---
 
-export async function runImport(skillPath: string, flags: { repo?: string }): Promise<void> {
+export async function runImport(): Promise<void> {
   const { username } = detectGh()
 
   ui.header('import')
   ui.subheader(`Authenticated as @${username}`)
 
-  const sourcePath = resolve(skillPath)
-  const itemType = await detectItemType(sourcePath)
-  const name = await parseName(sourcePath, itemType)
-
   const config = await readConfig()
   if (!config || Object.keys(config.repos).length === 0) exitNoReposJoined()
 
-  const target = await resolveRepo(config, flags.repo, 'Which repo should this be added to?')
+  const target = await resolveRepo(config, undefined, 'Which repo should this be imported into?')
 
-  const destDir = itemType === 'skill' ? 'skills' : 'agents'
-  const dest =
-    itemType === 'skill'
-      ? join(target.storePath, destDir, name)
-      : join(target.storePath, destDir, `${name}.md`)
+  ensureRepoWriteAccess(target.repo)
 
-  await guardNoDuplicate(dest, name, target.repo, destDir)
-
-  await mkdir(join(target.storePath, destDir), { recursive: true })
-  await cp(sourcePath, dest, { recursive: itemType === 'skill' })
-
-  const linkTarget =
-    itemType === 'skill'
-      ? join(homedir(), '.claude', 'skills', name)
-      : join(homedir(), '.claude', 'agents', `${name}.md`)
-
-  const linkResult = await linkSkill(dest, linkTarget)
-
-  // Print link result before push so the user sees backup info even on push failure
-  ui.blank()
-  ui.success(`${name} ${style.dim(`copied into ${target.repo}/${destDir}/`)}`)
-
-  if (linkResult.type === 'linked') {
-    ui.success(`Symlink created`)
-  } else if (linkResult.type === 'backed-up') {
-    ui.warn(`Backed up existing item to .backup/`)
-  } else if (linkResult.type === 'skipped' && linkResult.reason === 'collision') {
-    ui.info(`Symlink skipped ${style.dim('(collision with another repo)')}`)
-  } else if (linkResult.type === 'skipped' && linkResult.reason === 'already-linked') {
-    ui.info(`Already linked`)
+  const discovered = await discoverLocalSkills()
+  if (discovered.length === 0) {
+    fatal('No local skills or agents found to import.')
   }
+
+  const items = discovered.map((item) => ({
+    ...item,
+    name: sanitizeName(item.name),
+  }))
+
+  const selectedIndices = await multiselect({
+    message: 'Select skills and agents to import',
+    choices: items.map((item, i) => ({
+      label: buildChoiceLabel(item.name, item.type),
+      value: i,
+    })),
+    default: [],
+  }) as number[]
+
+  if (selectedIndices.length === 0) {
+    ui.hint('No items selected.')
+    ui.blank()
+    return
+  }
+
+  const home = homedir()
+  const plan: ImportPlan[] = selectedIndices.map((i) => {
+    const item = items[i]!
+    const destDir = item.type === 'skill' ? 'skills' : 'agents'
+    const fileName = item.type === 'skill' ? item.name : `${item.name}.md`
+    return {
+      name: item.name,
+      sourcePath: item.sourcePath,
+      type: item.type,
+      destDir,
+      dest: join(target.storePath, destDir, fileName),
+      linkTarget: join(home, '.claude', destDir, fileName),
+    }
+  })
+
+  const seenDests = new Set<string>()
+  for (const entry of plan) {
+    if (seenDests.has(entry.dest)) {
+      fatal(
+        `Multiple selected items resolve to the same name: "${entry.name}".`,
+        'Rename one of the local items and retry import.',
+      )
+    }
+    seenDests.add(entry.dest)
+    await guardNoDuplicate(entry.dest, entry.name, target.repo, entry.destDir)
+  }
+
+  ui.blank()
+
+  for (const entry of plan) {
+    await mkdir(join(target.storePath, entry.destDir), { recursive: true })
+    await cp(entry.sourcePath, entry.dest, { recursive: entry.type === 'skill' })
+
+    const linkResult = await linkSkill(entry.dest, entry.linkTarget)
+
+    ui.success(`${entry.name} ${style.dim(`copied into ${target.repo}/${entry.destDir}/`)}`)
+
+    if (linkResult.type === 'linked') {
+      ui.success(`${entry.name} ${style.dim('symlink created')}`)
+    } else if (linkResult.type === 'backed-up') {
+      ui.warn(`${entry.name} ${style.dim('backed up existing item to .backup/')}`)
+    } else if (linkResult.type === 'skipped' && linkResult.reason === 'collision') {
+      ui.info(`${entry.name} ${style.dim('symlink skipped (collision with another repo)')}`)
+    } else if (linkResult.type === 'skipped' && linkResult.reason === 'already-linked') {
+      ui.info(`${entry.name} ${style.dim('already linked')}`)
+    }
+  }
+
+  const names = plan.map((e) => e.name).join(', ')
 
   try {
     await spinner({
-      message: 'Pushing to GitHub...',
+      message: 'Committing and pushing to GitHub...',
       task: async () => {
-        commitAll(target.storePath, `[skillsync] @${username} added ${name}`)
+        commitAll(target.storePath, `[skillsync] @${username} added ${names}`)
         push(target.storePath)
       },
     })
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err)
     const hint = err instanceof GitError
-      ? 'The item was copied to the store but the push failed. Run `skillsync sync` to retry.'
+      ? 'Items were copied to the store but sync to GitHub failed. Run `skillsync sync` to retry.'
       : undefined
     fatal(detail, hint)
   }
 
   ui.blank()
-  ui.hint('Committed and pushed.')
+  ui.hint(`Committed and pushed ${plan.length} item${plan.length === 1 ? '' : 's'}.`)
   ui.blank()
 }

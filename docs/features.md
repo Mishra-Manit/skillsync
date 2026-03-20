@@ -113,9 +113,9 @@ The whole thing is ~1500 lines across 15 files.
 
 Already set up and want to add a new skill?
 
-`skillsync import ~/.claude/skills/my-new-skill`
+`skillsync import`
 
-It copies the skill into the team repo, commits with [skillsync] @you added my-new-skill, pushes, and updates your local symlink.
+It picks your joined repo (or asks if you're in multiple), verifies write access, shows a multiselect of your local skills and agents, then copies selected items into the team repo, commits, pushes, and updates local symlinks.
 
 One command. Your whole team has it.
 
