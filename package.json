@@ -15,7 +15,7 @@
   },
   "type": "module",
   "bin": {
-    "skillsync": "./bin/skillsync-cli"
+    "skillsync": "./bin/skillsync"
   },
   "files": [
     "bin",
