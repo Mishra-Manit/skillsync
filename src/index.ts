@@ -8,9 +8,8 @@ import { runDaemonStart, runDaemonStop, reviveDaemonIfNeeded } from './commands/
 import { runStatus } from './commands/status'
 import { runImport } from './commands/import'
 import { runCheckGit } from './commands/check-git'
-import { runDelete } from './commands/delete'
+import { runUnlink } from './commands/unlink'
 import { runLeave } from './commands/leave'
-import { runDestroy } from './commands/destroy'
 
 // Silently revive a dead daemon before any command runs (except `daemon stop`)
 const isDaemonStop = process.argv[2] === 'daemon' && process.argv[3] === 'stop'
@@ -51,27 +50,17 @@ const cli = new Crust('skillsync')
   .command('check-git', (cmd) =>
     cmd.meta({ description: 'Check gh CLI version and authentication status' }).run(runCheckGit)
   )
-  .command('delete', (cmd) =>
+  .command('unlink', (cmd) =>
     cmd
       .meta({ description: 'Remove linked skills or agents from local tool directories' })
       .args([{ name: 'name', type: 'string' }] as const)
-      .flags({
-        repo: { type: 'string', description: 'Limit to a specific joined repo' },
-        all: { type: 'boolean', default: false, description: 'Skip multiselect, remove all matching items' },
-      })
-      .run((ctx) => runDelete(ctx.args.name, ctx.flags))
+      .run((ctx) => runUnlink(ctx.args.name))
   )
   .command('leave', (cmd) =>
     cmd
       .meta({ description: 'Leave a joined team repo and remove all its linked items' })
       .args([{ name: 'repo', type: 'string' }] as const)
       .run((ctx) => runLeave(ctx.args.repo))
-  )
-  .command('destroy', (cmd) =>
-    cmd
-      .meta({ description: 'Remove a repo: restore backups, delete store, optionally delete GitHub repo' })
-      .args([{ name: 'repo', type: 'string' }] as const)
-      .run((ctx) => runDestroy(ctx.args.repo))
   )
   .command('daemon', (cmd) =>
     cmd

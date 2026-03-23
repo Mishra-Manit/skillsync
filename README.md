@@ -54,9 +54,8 @@ Import flow:
 | `sync [--repo owner/repo]` | Pull remote changes and push local ones (git pull --rebase + push) |
 | `import` | Interactively select local skills/agents to copy into a joined repo, then push |
 | `status` | Show joined repos, linked items, daemon state, and last sync time |
-| `delete [name]` | Remove symlinks for a skill or agent (restores backups if present) |
-| `leave [repo]` | Leave a repo: remove all its symlinks and delete the local store |
-| `destroy [repo]` | Full teardown: unlink everything, restore backups, delete store, optionally delete the GitHub repo |
+| `unlink [name]` | Remove symlinks for a skill or agent (restores backups if present) |
+| `leave [repo]` | Leave a repo: unlink all items, restore backups, delete store, and optionally delete the GitHub repo |
 | `daemon start\|stop` | Start or stop the background sync daemon |
 | `check-git` | Show gh CLI version and auth status |
 
@@ -68,7 +67,7 @@ Each joined repo is cloned to `~/.skillsync/store/<owner>/<repo>/`. Symlinks in 
 
 **Symlinks**
 
-`join` creates symlinks for every item in the shared repo's `skills/` and `agents/` directories. If a real directory already exists at a target path, it is backed up to `.backup/` before the symlink is created. `delete`, `leave`, and `destroy` restore backups automatically.
+`join` creates symlinks for every item in the shared repo's `skills/` and `agents/` directories. If a real directory already exists at a target path, it is backed up to `.backup/` before the symlink is created. `unlink` and `leave` restore backups automatically.
 
 **Daemon**
 

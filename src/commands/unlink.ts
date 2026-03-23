@@ -1,14 +1,9 @@
 import { style } from '@crustjs/style'
 import { multiselect, confirm } from '@crustjs/prompts'
 import { detectGh } from '../lib/github'
-import { readConfig, exitNoReposJoined, exitRepoNotFound } from '../lib/config'
+import { readConfig, exitNoReposJoined } from '../lib/config'
 import { storeRoot, listLinkedDetailed, unlinkSkill, hasBackup, restoreBackup, type LinkedItem } from '../lib/placer'
 import { ui } from '../lib/ui'
-
-type DeleteFlags = {
-  repo?: string
-  all: boolean
-}
 
 function repoSlugFrom(item: LinkedItem): string {
   const rel = item.resolvedStorePath.slice(storeRoot.length)
@@ -16,29 +11,23 @@ function repoSlugFrom(item: LinkedItem): string {
   return `${parts[0]}/${parts[1]}`
 }
 
-export async function runDelete(name: string | undefined, flags: DeleteFlags): Promise<void> {
+export async function runUnlink(name?: string): Promise<void> {
   detectGh()
 
-  ui.header('delete')
+  ui.header('unlink')
 
   const config = await readConfig()
   if (!config || Object.keys(config.repos).length === 0) exitNoReposJoined()
-  if (flags.repo && !config.repos[flags.repo]) exitRepoNotFound(flags.repo)
 
   // Build candidate list
   let candidates = await listLinkedDetailed()
-
-  if (flags.repo) {
-    const storePath = config.repos[flags.repo]!.storePath + '/'
-    candidates = candidates.filter((item) => item.resolvedStorePath.startsWith(storePath))
-  }
 
   if (name) {
     candidates = candidates.filter((item) => item.name === name || item.name === `${name}.md`)
   }
 
   if (candidates.length === 0) {
-    ui.hint('Nothing to delete.')
+    ui.hint('Nothing to unlink.')
     return
   }
 
@@ -52,7 +41,7 @@ export async function runDelete(name: string | undefined, flags: DeleteFlags): P
   // Select items
   let selected: LinkedItem[]
 
-  if (!name && !flags.all) {
+  if (!name) {
     const choices = candidates.map((item) => ({
       label: `${item.name}  ${style.dim(`${item.type} | ${repoSlugFrom(item)}`)}`,
       value: item.targetPath,
@@ -77,7 +66,7 @@ export async function runDelete(name: string | undefined, flags: DeleteFlags): P
     return
   }
 
-  // Delete and restore backups
+  // Unlink and restore backups
   ui.blank()
   let restored = 0
 

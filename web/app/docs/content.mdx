@@ -133,55 +133,33 @@ Displays:
 - Each joined repo with its team name, store path, last sync time, and linked skills/agents
 - Background daemon status — running PID and uptime, or not running with a hint to start it
 
-### delete
+### unlink
 
 Remove linked skills or agents from your local tool directories.
 
 ```bash
-skillsync delete
-skillsync delete <name>
-skillsync delete --all
-skillsync delete --repo owner/repo
+skillsync unlink
+skillsync unlink <name>
 ```
 
 Removes skillsync-managed symlinks from `~/.claude/skills/` and `~/.claude/agents/`. If a backup exists from before skillsync linked the item, it's restored automatically.
 
 This only affects your local machine. It does **not** delete files from the shared GitHub repo.
 
-| Flag | Description |
-|------|-------------|
-| `<name>` | Delete a specific skill or agent by name |
-| `--all` | Delete all linked items |
-| `--repo` | Only delete items from a specific repo |
+Without a name, shows an interactive multiselect of all linked items — nothing is pre-selected.
 
 ### leave
 
-Leave a joined team repo and remove all its linked items.
+Leave a joined team repo and clean up everything locally.
 
 ```bash
 skillsync leave
 skillsync leave <owner/repo>
 ```
 
-Removes all symlinks for that repo, deletes the local store directory, and removes it from your config. The GitHub repo is **not** deleted — your teammates can keep using it.
+Removes all symlinks for that repo, restores any backed-up files, deletes the local store directory, and removes it from your config.
 
-### destroy
-
-Fully remove a repo: unlink items, restore backups, delete local store, and optionally delete the GitHub repo.
-
-```bash
-skillsync destroy
-skillsync destroy <owner/repo>
-```
-
-This is the nuclear option. It:
-
-1. Removes all symlinks for the repo
-2. Restores any files that were backed up when links were created
-3. Deletes the local store directory
-4. Asks if you want to delete the GitHub repo itself (via `gh repo delete`)
-
-Every step requires confirmation. Nothing happens without your explicit approval.
+At the end, you'll be asked whether to also delete the GitHub repo itself. Choosing no leaves the repo intact for your teammates.
 
 ### daemon
 
