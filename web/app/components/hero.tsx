@@ -34,7 +34,7 @@ function TerminalIcon() {
 
 export function Hero() {
   return (
-    <section className="flex flex-col items-center gap-7 px-5 pb-[60px] pt-12 md:px-[120px] md:pt-20">
+    <section className="flex flex-col items-center gap-7 px-5 pb-[60px] pt-6 md:px-[120px] md:pt-12">
       <div className="flex items-center gap-2 rounded-[20px] border border-border bg-bg-white px-4 py-1.5">
         <span className="h-1.5 w-1.5 rounded-full bg-accent" />
         <span className="font-sans text-xs font-medium text-muted">
