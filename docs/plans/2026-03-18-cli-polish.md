@@ -1,5 +1,7 @@
 # CLI Polish & Code Cleanup Implementation Plan
 
+**Status: Completed** (all 6 tasks implemented 2026-03-19)
+
 **Goal:** Make the CLI output visually polished and consistent, and make the codebase dead-simple to read and contribute to.
 
 **Approach:** Extract a shared `ui.ts` output module that every command uses, so formatting is defined once. Remove async/sync mismatches, flatten awkward control flow, DRY up duplicated scan logic, and give every command a consistent visual structure. Add autoCompletePlugin for free UX polish.

@@ -923,9 +923,17 @@ Resolution order: default → `setTheme()` → per-prompt `theme` option (later 
 
 ## 14. @crustjs/style
 
-ANSI-safe styling primitives with terminal capability awareness.
+ANSI-safe styling primitives with terminal capability awareness. You can import individual functions or use the `style` namespace object.
 
 ```typescript
+// Namespace import (recommended — used in this project)
+import { style } from "@crustjs/style";
+
+console.log(style.bold("Build succeeded"));
+console.log(style.red("Error: missing argument"));
+console.log(style.dim("note: check your config"));
+
+// Individual imports also work
 import { bold, red, cyan, dim, italic, green } from "@crustjs/style";
 
 console.log(bold("Build succeeded"));

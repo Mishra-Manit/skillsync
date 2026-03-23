@@ -1,3 +1,9 @@
+# Issues I noticed
+
+Current solutions like skills.sh by vercel are meant for large companies and creators to share their skills with the public.
+There is no P2P way to share skills right now that isn't a pain. No secure and private way. Most of all, no way to keep those
+skills updated once they are installed.
+
 # skillsync -- Twitter Thread
 
 Target audience: developers using Claude Code, AI-native dev teams, indie hackers, build-in-public crowd.
