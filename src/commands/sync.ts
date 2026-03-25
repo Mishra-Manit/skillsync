@@ -3,6 +3,7 @@ import { spinner } from '@crustjs/prompts'
 import { detectGh } from '../lib/github'
 import { readConfig, exitNoReposJoined, exitRepoNotFound } from '../lib/config'
 import { syncRepo, updateLastSync } from '../lib/syncer'
+import { linkAllFromStore, cleanDanglingLinks } from '../lib/placer'
 import { ui } from '../lib/ui'
 
 export async function runSync(flags: { repo?: string }): Promise<void> {
@@ -31,6 +32,8 @@ export async function runSync(flags: { repo?: string }): Promise<void> {
     if (result.status === 'synced') {
       ui.success(`${slug} ${style.dim('synced')}`)
       await updateLastSync(repo)
+      await linkAllFromStore(repo.storePath)
+      await cleanDanglingLinks()
     } else if (result.status === 'up-to-date') {
       ui.info(`${slug} ${style.dim('up to date')}`)
     } else if (result.status === 'conflict') {

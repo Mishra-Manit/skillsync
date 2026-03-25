@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { Crust } from '@crustjs/core'
 import { helpPlugin, versionPlugin, autoCompletePlugin } from '@crustjs/plugins'
+import pkg from '../package.json'
 import { runCreate } from './commands/create'
 import { runJoin } from './commands/join'
 import { runSync } from './commands/sync'
@@ -19,7 +20,7 @@ if (!isDaemonStop) {
 
 const cli = new Crust('skillsync')
   .meta({ description: 'Share and sync Claude Code agents and skills with your team' })
-  .use(versionPlugin('0.1.0'))
+  .use(versionPlugin(pkg.version))
   .use(autoCompletePlugin({ mode: 'help' }))
   .use(helpPlugin())
   .command('create', (cmd) =>

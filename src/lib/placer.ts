@@ -1,4 +1,4 @@
-import { lstat, readlink, symlink, mkdir, rename, unlink, readdir } from 'fs/promises'
+import { lstat, stat, readlink, symlink, mkdir, rename, unlink, readdir } from 'fs/promises'
 import type { Dirent } from 'fs'
 import { homedir } from 'os'
 import { join, dirname, basename, isAbsolute, resolve } from 'path'
@@ -25,7 +25,7 @@ export const storeRoot = join(homedir(), '.skillsync', 'store') + '/'
 
 export function assertSafeStorePath(storePath: string): void {
   const resolved = resolve(storePath)
-  if (!resolved.startsWith(storeRoot.slice(0, -1))) {
+  if (!resolved.startsWith(storeRoot)) {
     fatal(
       'Refusing to delete: store path is outside ~/.skillsync/store/',
       `Path "${storePath}" does not resolve to the expected store root.`,
@@ -152,6 +152,20 @@ export async function getOwnedItems(storePath: string): Promise<LinkedItem[]> {
   const allLinked = await listLinkedDetailed()
   const prefix = storePath.endsWith('/') ? storePath : storePath + '/'
   return allLinked.filter((item) => item.resolvedStorePath.startsWith(prefix))
+}
+
+export async function cleanDanglingLinks(): Promise<string[]> {
+  const all = await listLinkedDetailed()
+  const removed: string[] = []
+  for (const item of all) {
+    try {
+      await stat(item.resolvedStorePath)
+    } catch {
+      await unlink(item.targetPath)
+      removed.push(item.name)
+    }
+  }
+  return removed
 }
 
 export async function linkAllFromStore(storePath: string): Promise<LinkResultEntry[]> {

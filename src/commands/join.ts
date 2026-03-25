@@ -1,7 +1,7 @@
 import { style } from '@crustjs/style'
 import { confirm, spinner } from '@crustjs/prompts'
-import { rm } from 'fs/promises'
-import { homedir } from 'os'
+import { mkdtemp, rename, rm } from 'fs/promises'
+import { homedir, tmpdir } from 'os'
 import { join } from 'path'
 import { fatal } from '../lib/errors'
 import { detectGh } from '../lib/github'
@@ -37,18 +37,34 @@ export async function runJoin(repo: string): Promise<void> {
       ui.hint('Skipped. Already joined.')
       return
     }
-    await rm(storePath, { recursive: true, force: true })
-  }
 
-  // Clone
-  try {
-    await spinner({
-      message: `Cloning ${repo}...`,
-      task: async () => cloneRepo(repo, storePath),
-    })
-  } catch (err) {
-    if (err instanceof CloneError) fatal(err.message)
-    throw err
+    const tempDir = await mkdtemp(join(tmpdir(), 'skillsync-rejoin-'))
+    const tempStorePath = join(tempDir, repoName)
+    try {
+      await spinner({
+        message: `Cloning ${repo}...`,
+        task: async () => cloneRepo(repo, tempStorePath),
+      })
+      await rm(storePath, { recursive: true, force: true })
+      await rename(tempStorePath, storePath)
+    } catch (err) {
+      await rm(tempDir, { recursive: true, force: true })
+      if (err instanceof CloneError) fatal(err.message)
+      throw err
+    } finally {
+      await rm(tempDir, { recursive: true, force: true }).catch(() => {})
+    }
+  } else {
+    // Fresh join
+    try {
+      await spinner({
+        message: `Cloning ${repo}...`,
+        task: async () => cloneRepo(repo, storePath),
+      })
+    } catch (err) {
+      if (err instanceof CloneError) fatal(err.message)
+      throw err
+    }
   }
 
   await addRepo(

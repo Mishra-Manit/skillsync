@@ -4,6 +4,7 @@ import { join } from 'path'
 import { readConfig } from './config'
 import { hasChanges, hasRemoteChanges } from './git'
 import { syncRepo, updateLastSync } from './syncer'
+import { linkAllFromStore, cleanDanglingLinks } from './placer'
 
 export type WatcherHandle = {
   stop: () => void
@@ -46,6 +47,8 @@ export function startWatcher(
 
       if (result.status === 'synced') {
         await updateLastSync(repo)
+        await linkAllFromStore(repo.storePath)
+        await cleanDanglingLinks()
         log(`[${trigger}] ${slug} synced`)
       } else if (result.status === 'up-to-date') {
         log(`[${trigger}] ${slug} up to date`)
