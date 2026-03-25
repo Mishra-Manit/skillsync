@@ -1,3 +1,6 @@
+import { existsSync } from 'fs'
+import { join } from 'path'
+
 export class CloneError extends Error {
   constructor(repoSlug: string, detail: string) {
     super(`Failed to clone ${repoSlug}: ${detail}`)
@@ -57,6 +60,9 @@ export function commitAll(repoPath: string, message: string): void {
     throw new GitError('add', add.stderr.toString().trim())
   }
 
+  // Check for changes using porcelain output (locale-independent)
+  if (!hasChanges(repoPath)) return
+
   const commit = Bun.spawnSync(['git', 'commit', '-m', message], {
     cwd: repoPath,
     stdout: 'pipe',
@@ -64,9 +70,7 @@ export function commitAll(repoPath: string, message: string): void {
   })
 
   if (!commit.success) {
-    const stderr = commit.stderr.toString().trim()
-    if (stderr.includes('nothing to commit')) return
-    throw new GitError('commit', stderr)
+    throw new GitError('commit', commit.stderr.toString().trim())
   }
 }
 
@@ -110,10 +114,48 @@ export function getDefaultBranch(repoPath: string): string {
     stderr: 'pipe',
   })
 
-  if (!result.success) return 'main'
+  if (result.success) {
+    return result.stdout.toString().trim().replace('refs/remotes/origin/', '')
+  }
 
-  const ref = result.stdout.toString().trim()
-  return ref.replace('refs/remotes/origin/', '')
+  // origin/HEAD not set (common on fresh clones) — ask git to auto-detect it
+  const autoHead = Bun.spawnSync(['git', 'remote', 'set-head', 'origin', '--auto'], {
+    cwd: repoPath,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+
+  if (autoHead.success) {
+    const retry = Bun.spawnSync(['git', 'symbolic-ref', 'refs/remotes/origin/HEAD'], {
+      cwd: repoPath,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    if (retry.success) {
+      return retry.stdout.toString().trim().replace('refs/remotes/origin/', '')
+    }
+  }
+
+  // Last resort: ask the GitHub API via gh
+  const gh = Bun.spawnSync(['gh', 'repo', 'view', '--json', 'defaultBranchRef', '--jq', '.defaultBranchRef.name'], {
+    cwd: repoPath,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+
+  if (gh.success) {
+    const branch = gh.stdout.toString().trim()
+    if (branch.length > 0) return branch
+  }
+
+  return 'main'
+}
+
+function isRebaseInProgress(repoPath: string): boolean {
+  return (
+    existsSync(join(repoPath, '.git', 'rebase-merge')) ||
+    existsSync(join(repoPath, '.git', 'rebase-apply'))
+  )
 }
 
 export function pullRebase(repoPath: string): void {
@@ -128,8 +170,8 @@ export function pullRebase(repoPath: string): void {
 
   const stderr = result.stderr.toString().trim()
 
-  // Abort the rebase if it's in progress, then throw conflict error
-  if (stderr.includes('CONFLICT') || stderr.includes('could not apply')) {
+  // Detect conflict via filesystem state (locale-independent)
+  if (isRebaseInProgress(repoPath)) {
     Bun.spawnSync(['git', 'rebase', '--abort'], {
       cwd: repoPath,
       stdout: 'pipe',

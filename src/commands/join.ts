@@ -1,6 +1,6 @@
 import { style } from '@crustjs/style'
 import { confirm, spinner } from '@crustjs/prompts'
-import { mkdtemp, rename, rm } from 'fs/promises'
+import { cp, mkdtemp, rm } from 'fs/promises'
 import { homedir, tmpdir } from 'os'
 import { join } from 'path'
 import { fatal } from '../lib/errors'
@@ -46,7 +46,7 @@ export async function runJoin(repo: string): Promise<void> {
         task: async () => cloneRepo(repo, tempStorePath),
       })
       await rm(storePath, { recursive: true, force: true })
-      await rename(tempStorePath, storePath)
+      await cp(tempStorePath, storePath, { recursive: true })
     } catch (err) {
       await rm(tempDir, { recursive: true, force: true })
       if (err instanceof CloneError) fatal(err.message)

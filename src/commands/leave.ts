@@ -29,8 +29,9 @@ export async function runLeave(arg?: string): Promise<void> {
   const owned = await getOwnedItems(target.storePath)
 
   let restored = 0
-  try {
-    for (const item of owned) {
+  const errors: Array<{ name: string; error: unknown }> = []
+  for (const item of owned) {
+    try {
       await unlinkSkill(item.targetPath)
       if (await hasBackup(item.targetPath)) {
         await restoreBackup(item.targetPath)
@@ -39,9 +40,14 @@ export async function runLeave(arg?: string): Promise<void> {
       } else {
         ui.success(`${item.name}  ${style.dim('unlinked')}`)
       }
+    } catch (err) {
+      errors.push({ name: item.name, error: err })
+      ui.warn(`${item.name}  ${style.dim('failed to unlink')}`)
     }
-  } catch {
-    fatal('Failed while unlinking symlinks.', 'Some items may already be unlinked. Run `skillsync status` to check.')
+  }
+
+  if (errors.length > 0) {
+    ui.warn(`${errors.length} item${errors.length === 1 ? '' : 's'} failed to unlink. Run \`skillsync status\` to check.`)
   }
 
   assertSafeStorePath(target.storePath)
