@@ -24,7 +24,7 @@ const ROW_2 = [
   },
   {
     title: "Team management",
-    desc: "Join, leave, import, delete, destroy. Every action is reversible, every command has a confirmation step.",
+    desc: "Join, leave, import, unlink, sync. Every action is reversible, every command has a confirmation step.",
     desktopBorder: "",
   },
 ] as const;

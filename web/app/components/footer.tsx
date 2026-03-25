@@ -1,5 +1,16 @@
-const PRODUCT_LINKS = ["Features", "How It Works", "Docs"] as const;
-const RESOURCE_LINKS = ["GitHub", "Changelog", "MIT License"] as const;
+import Link from "next/link";
+
+const PRODUCT_LINKS = [
+  { label: "Features", href: "/#features" },
+  { label: "How It Works", href: "/#how-it-works" },
+  { label: "Docs", href: "/docs" },
+] as const;
+
+const RESOURCE_LINKS = [
+  { label: "GitHub", href: "https://github.com/manitmishra/skillsync" },
+  { label: "npm", href: "https://www.npmjs.com/package/@manitmishra/skillsync" },
+  { label: "MIT License", href: "https://github.com/manitmishra/skillsync/blob/main/LICENSE" },
+] as const;
 
 export function Footer() {
   return (
@@ -21,25 +32,27 @@ export function Footer() {
             <span className="font-sans text-[13px] font-semibold text-fg">
               Product
             </span>
-            {PRODUCT_LINKS.map((label) => (
-              <a
+            {PRODUCT_LINKS.map(({ label, href }) => (
+              <Link
                 key={label}
-                href="#"
-                className="font-sans text-[13px] text-muted"
+                href={href}
+                className="font-sans text-[13px] text-muted hover:text-fg transition-colors"
               >
                 {label}
-              </a>
+              </Link>
             ))}
           </div>
           <div className="flex flex-col gap-3">
             <span className="font-sans text-[13px] font-semibold text-fg">
               Resources
             </span>
-            {RESOURCE_LINKS.map((label) => (
+            {RESOURCE_LINKS.map(({ label, href }) => (
               <a
                 key={label}
-                href="#"
-                className="font-sans text-[13px] text-muted"
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-sans text-[13px] text-muted hover:text-fg transition-colors"
               >
                 {label}
               </a>
